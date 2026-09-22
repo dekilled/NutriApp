@@ -1,19 +1,42 @@
 <script setup lang="ts">
 import { Laptop, Moon, Sun } from 'lucide-vue-next'
+import { onMounted, onUnmounted, ref } from 'vue'
 
 import AppCard from '@/components/ui/AppCard.vue'
-import { useSettings } from '@/composables/useSettings'
+import { useSpeech } from '@/composables/useSpeech'
 import { useTheme } from '@/composables/useTheme'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import packageJson from '../../package.json'
 
 const { preference, setPreference } = useTheme()
-const { settings } = useSettings()
+const { settings } = useSettingsStore()
+const { getAvailableVoices, isSupported: speechSupported } = useSpeech()
 
 const themeOptions = [
   { value: 'light' as const, label: 'Claro', icon: Sun },
   { value: 'dark' as const, label: 'Escuro', icon: Moon },
   { value: 'system' as const, label: 'Sistema', icon: Laptop },
 ]
+
+const voices = ref<SpeechSynthesisVoice[]>([])
+
+function loadVoices() {
+  voices.value = getAvailableVoices()
+}
+
+onMounted(() => {
+  loadVoices()
+  // A lista de vozes carrega de forma assíncrona no Chromium/WebView.
+  if (speechSupported) {
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices)
+  }
+})
+
+onUnmounted(() => {
+  if (speechSupported) {
+    window.speechSynthesis.removeEventListener('voiceschanged', loadVoices)
+  }
+})
 </script>
 
 <template>
@@ -60,8 +83,94 @@ const themeOptions = [
       />
 
       <p class="mt-3 text-xs text-text-muted">
-        Entre os dois valores fica a zona de transição, calculada pela média dos últimos 5 segundos de leitura.
+        Entre os dois valores fica a zona de transição: o app mantém o tipo atual (caminhada/corrida) por 8s
+        antes de confirmar uma mudança, evitando trocas por oscilação do GPS.
       </p>
+    </AppCard>
+
+    <AppCard title="Assistente de voz">
+      <div class="mb-4 flex items-center justify-between">
+        <div>
+          <p class="text-sm font-medium text-text">Ativar assistente</p>
+          <p class="text-xs text-text-muted">Anuncia checkpoints durante o exercício</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          :aria-checked="settings.assistantEnabled"
+          class="relative h-6 w-11 shrink-0 rounded-full transition-colors"
+          :class="settings.assistantEnabled ? 'bg-primary' : 'bg-surface-alt'"
+          @click="settings.assistantEnabled = !settings.assistantEnabled"
+        >
+          <span
+            class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
+            :class="settings.assistantEnabled ? 'translate-x-5' : 'translate-x-0.5'"
+          />
+        </button>
+      </div>
+
+      <template v-if="settings.assistantEnabled">
+        <label class="mb-1 block text-sm text-text" for="voice-select">Voz</label>
+        <select
+          id="voice-select"
+          v-model="settings.assistantVoice"
+          class="mb-3 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-text outline-none focus:border-primary"
+        >
+          <option :value="null">Padrão do sistema</option>
+          <option v-for="voice in voices" :key="voice.name" :value="voice.name">
+            {{ voice.name }} ({{ voice.lang }})
+          </option>
+        </select>
+
+        <p class="mb-3 text-xs text-text-muted">Idioma: Português (Brasil) — fixo por enquanto.</p>
+
+        <div class="mb-3 flex items-center justify-between">
+          <p class="text-sm text-text">Checkpoints por km</p>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="settings.checkpointsByKmEnabled"
+            class="relative h-6 w-11 shrink-0 rounded-full transition-colors"
+            :class="settings.checkpointsByKmEnabled ? 'bg-primary' : 'bg-surface-alt'"
+            @click="settings.checkpointsByKmEnabled = !settings.checkpointsByKmEnabled"
+          >
+            <span
+              class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
+              :class="settings.checkpointsByKmEnabled ? 'translate-x-5' : 'translate-x-0.5'"
+            />
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <p class="text-sm text-text">Checkpoints por tempo</p>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="settings.checkpointsByTimeEnabled"
+            class="relative h-6 w-11 shrink-0 rounded-full transition-colors"
+            :class="settings.checkpointsByTimeEnabled ? 'bg-primary' : 'bg-surface-alt'"
+            @click="settings.checkpointsByTimeEnabled = !settings.checkpointsByTimeEnabled"
+          >
+            <span
+              class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
+              :class="settings.checkpointsByTimeEnabled ? 'translate-x-5' : 'translate-x-0.5'"
+            />
+          </button>
+        </div>
+        <input
+          v-if="settings.checkpointsByTimeEnabled"
+          v-model.number="settings.checkpointsByTimeIntervalMin"
+          type="number"
+          min="1"
+          step="1"
+          placeholder="Intervalo em minutos"
+          class="mt-2 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-text outline-none focus:border-primary"
+        />
+
+        <p class="mt-4 rounded-lg bg-surface-alt px-3 py-2 text-xs text-text-muted">
+          Integração com Kokoro em breve.
+        </p>
+      </template>
     </AppCard>
 
     <AppCard title="Sobre">

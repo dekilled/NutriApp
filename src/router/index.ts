@@ -20,6 +20,24 @@ const routes = [
     meta: { title: 'Exercícios' },
   },
   {
+    path: '/exercises/new',
+    name: 'exercise-new',
+    component: () => import('@/views/exercise/NewExerciseView.vue'),
+    meta: { title: 'Novo exercício' },
+  },
+  {
+    path: '/exercises/active',
+    name: 'exercise-active',
+    component: () => import('@/views/exercise/ActiveSessionView.vue'),
+    meta: { title: 'Exercício em andamento' },
+  },
+  {
+    path: '/exercises/summary',
+    name: 'exercise-summary',
+    component: () => import('@/views/exercise/SessionSummaryView.vue'),
+    meta: { title: 'Resumo do exercício' },
+  },
+  {
     path: '/plans',
     name: 'plans',
     component: () => import('@/views/PlansView.vue'),

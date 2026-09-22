@@ -9,11 +9,11 @@ import { getAdherenceByDateRange, getOrCreateDailyLog, type DayAdherence } from 
 import { getActivePlan } from '@/services/planService'
 import { listPlanSupplements, listSupplementLogs, type PlanSupplement } from '@/services/supplementService'
 import { listRecentSessions, type SessionWithSegments } from '@/services/activityService'
-import { useSettings } from '@/composables/useSettings'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { addDaysIso, startOfMonthIso, startOfWeekIso, todayIso, WEEKDAY_LABELS } from '@/utils/date'
 import { estimateAverageSpeedKmh } from '@/utils/speed'
 
-const { settings } = useSettings()
+const { settings } = useSettingsStore()
 
 const monthlyStats = ref<{ done: number; total: number }>({ done: 0, total: 0 })
 const weeklyStats = ref<{ done: number; total: number }>({ done: 0, total: 0 })
@@ -46,6 +46,13 @@ function formatMinutes(totalMinutes: number | null): string {
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+}
+
+function averageSpeed(session: SessionWithSegments): string {
+  const speed =
+    session.avg_speed_kmh ??
+    estimateAverageSpeedKmh(session.segments, settings.walkMaxSpeedKmh, settings.runMinSpeedKmh)
+  return speed.toFixed(1).replace('.', ',')
 }
 
 async function load() {
@@ -147,7 +154,7 @@ onMounted(load)
             <p class="text-sm font-medium text-text">{{ formatDate(session.started_at) }}</p>
             <p class="text-xs text-text-muted">
               {{ formatMinutes(session.total_minutes) }} ·
-              Média {{ estimateAverageSpeedKmh(session.segments, settings.walkMaxSpeedKmh, settings.runMinSpeedKmh).toFixed(1).replace('.', ',') }} km/h
+              Média {{ averageSpeed(session) }} km/h
             </p>
           </div>
         </li>

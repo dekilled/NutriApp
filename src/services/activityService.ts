@@ -1,5 +1,9 @@
 import { getDatabase } from '@/db'
 
+export type ExerciseMode = 'walking' | 'running' | 'auto'
+export type ExerciseGoalType = 'distance' | 'time'
+export type SegmentType = 'walk' | 'run' | 'idle'
+
 export interface ActivitySession {
   id: number
   daily_log_id: number
@@ -7,12 +11,18 @@ export interface ActivitySession {
   ended_at: string | null
   total_minutes: number | null
   notes: string | null
+  mode: ExerciseMode | null
+  distance_km: number | null
+  avg_speed_kmh: number | null
+  calories: number | null
+  goal_type: ExerciseGoalType | null
+  goal_value: number | null
 }
 
 export interface ActivitySegment {
   id: number
   session_id: number
-  type: string
+  type: SegmentType
   started_at: string
   ended_at: string | null
   duration_s: number | null
@@ -45,9 +55,7 @@ export async function listActivitySessions(dailyLogId: number): Promise<Activity
   return (values ?? []) as ActivitySession[]
 }
 
-export async function addActivitySegment(
-  input: Omit<ActivitySegment, 'id'>,
-): Promise<number> {
+export async function addActivitySegment(input: Omit<ActivitySegment, 'id'>): Promise<number> {
   const db = getDatabase()
   const result = await db.run(
     `INSERT INTO activity_segments
@@ -86,4 +94,61 @@ export async function listRecentSessions(limit: number): Promise<SessionWithSegm
     withSegments.push({ ...session, segments })
   }
   return withSegments
+}
+
+export interface FinishedSessionSegment {
+  type: SegmentType
+  startedAt: string
+  endedAt: string
+  durationS: number
+}
+
+export interface FinishedSession {
+  dailyLogId: number
+  startedAt: string
+  endedAt: string
+  totalMinutes: number
+  distanceKm: number
+  avgSpeedKmh: number
+  calories: number
+  mode: ExerciseMode
+  goalType: ExerciseGoalType | null
+  goalValue: number | null
+  segments: FinishedSessionSegment[]
+}
+
+/** Persiste uma sessão de exercício já finalizada (GPS) e seus segmentos. */
+export async function saveSession(session: FinishedSession): Promise<number> {
+  const db = getDatabase()
+  const result = await db.run(
+    `INSERT INTO activity_sessions
+      (daily_log_id, started_at, ended_at, total_minutes, mode, distance_km, avg_speed_kmh, calories, goal_type, goal_value)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [
+      session.dailyLogId,
+      session.startedAt,
+      session.endedAt,
+      session.totalMinutes,
+      session.mode,
+      session.distanceKm,
+      session.avgSpeedKmh,
+      session.calories,
+      session.goalType,
+      session.goalValue,
+    ],
+  )
+  const sessionId = result.changes?.lastId ?? 0
+
+  for (const segment of session.segments) {
+    await addActivitySegment({
+      session_id: sessionId,
+      type: segment.type,
+      started_at: segment.startedAt,
+      ended_at: segment.endedAt,
+      duration_s: segment.durationS,
+      confidence: 1,
+    })
+  }
+
+  return sessionId
 }

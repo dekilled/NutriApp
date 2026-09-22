@@ -28,10 +28,23 @@ ALTER TABLE plan_supplements ADD COLUMN serving_description TEXT;
 ${CREATE_SUPPLEMENT_INGREDIENTS_SQL}
 `
 
+// Sessão de exercício ganha GPS: precisa persistir distância, velocidade
+// média, calorias estimadas, o modo escolhido (walking/running/auto) e a
+// meta definida (se houver), nada disso existia até a v3.
+const ADD_EXERCISE_SESSION_FIELDS_SQL = `
+ALTER TABLE activity_sessions ADD COLUMN mode TEXT;
+ALTER TABLE activity_sessions ADD COLUMN distance_km REAL;
+ALTER TABLE activity_sessions ADD COLUMN avg_speed_kmh REAL;
+ALTER TABLE activity_sessions ADD COLUMN calories REAL;
+ALTER TABLE activity_sessions ADD COLUMN goal_type TEXT;
+ALTER TABLE activity_sessions ADD COLUMN goal_value REAL;
+`
+
 export const migrations: Migration[] = [
   { version: 1, up: CREATE_TABLES_SQL },
   { version: 2, up: ADD_QUANTITY_AND_SLOT_NOTES_SQL },
   { version: 3, up: ADD_SUPPLEMENT_RECIPES_SQL },
+  { version: 4, up: ADD_EXERCISE_SESSION_FIELDS_SQL },
 ]
 
 // NOTA: a lista original tem 9 nomes, não 8 — mantidos todos para não perder
