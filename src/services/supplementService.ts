@@ -1,6 +1,10 @@
 import { getDatabase } from '@/db'
 
 export type SupplementLogStatus = 'pending' | 'done' | 'skipped'
+export type SupplementType = 'simple' | 'recipe'
+export type IngredientUnit = 'g' | 'ml' | 'unidade' | 'colher' | 'xícara' | 'pitada'
+
+export const INGREDIENT_UNITS: IngredientUnit[] = ['g', 'ml', 'unidade', 'colher', 'xícara', 'pitada']
 
 export interface PlanSupplement {
   id: number
@@ -10,6 +14,17 @@ export interface PlanSupplement {
   scheduled_time: string | null
   with_meal_slot: number | null
   notes: string | null
+  type: SupplementType
+  serving_description: string | null
+}
+
+export interface SupplementIngredient {
+  id: number
+  supplement_id: number
+  ingredient: string
+  quantity: number | null
+  unit: IngredientUnit | null
+  order_index: number
 }
 
 export interface SupplementLog {
@@ -27,15 +42,112 @@ export async function listPlanSupplements(planId: number): Promise<PlanSupplemen
   return (values ?? []) as PlanSupplement[]
 }
 
-export async function addPlanSupplement(input: Omit<PlanSupplement, 'id'>): Promise<number> {
+export interface CreateSupplementInput {
+  plan_id: number
+  name: string
+  dose: string | null
+  scheduled_time: string | null
+  with_meal_slot: number | null
+  notes: string | null
+  type: SupplementType
+  serving_description: string | null
+  ingredients?: Array<Pick<SupplementIngredient, 'ingredient' | 'quantity' | 'unit' | 'order_index'>>
+}
+
+export async function createSupplement(input: CreateSupplementInput): Promise<number> {
   const db = getDatabase()
   const result = await db.run(
     `INSERT INTO plan_supplements
-      (plan_id, name, dose, scheduled_time, with_meal_slot, notes)
-     VALUES (?, ?, ?, ?, ?, ?);`,
-    [input.plan_id, input.name, input.dose, input.scheduled_time, input.with_meal_slot, input.notes],
+      (plan_id, name, dose, scheduled_time, with_meal_slot, notes, type, serving_description)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+    [
+      input.plan_id,
+      input.name,
+      input.dose,
+      input.scheduled_time,
+      input.with_meal_slot,
+      input.notes,
+      input.type,
+      input.serving_description,
+    ],
+  )
+  const supplementId = result.changes?.lastId ?? 0
+
+  if (input.type === 'recipe' && input.ingredients?.length) {
+    for (const ingredient of input.ingredients) {
+      await addIngredient(supplementId, ingredient)
+    }
+  }
+
+  return supplementId
+}
+
+export interface SupplementWithIngredients extends PlanSupplement {
+  ingredients: SupplementIngredient[]
+}
+
+export async function getSupplement(id: number): Promise<SupplementWithIngredients | null> {
+  const db = getDatabase()
+  const { values } = await db.query('SELECT * FROM plan_supplements WHERE id = ?;', [id])
+  const supplement = (values?.[0] as PlanSupplement | undefined) ?? null
+  if (!supplement) return null
+
+  const ingredients =
+    supplement.type === 'recipe' ? await listIngredients(supplement.id) : []
+
+  return { ...supplement, ingredients }
+}
+
+export async function listIngredients(supplementId: number): Promise<SupplementIngredient[]> {
+  const db = getDatabase()
+  const { values } = await db.query(
+    'SELECT * FROM supplement_ingredients WHERE supplement_id = ? ORDER BY order_index ASC, id ASC;',
+    [supplementId],
+  )
+  return (values ?? []) as SupplementIngredient[]
+}
+
+export async function addIngredient(
+  supplementId: number,
+  ingredient: Pick<SupplementIngredient, 'ingredient' | 'quantity' | 'unit' | 'order_index'>,
+): Promise<number> {
+  const db = getDatabase()
+  const result = await db.run(
+    `INSERT INTO supplement_ingredients (supplement_id, ingredient, quantity, unit, order_index)
+     VALUES (?, ?, ?, ?, ?);`,
+    [supplementId, ingredient.ingredient, ingredient.quantity, ingredient.unit, ingredient.order_index],
   )
   return result.changes?.lastId ?? 0
+}
+
+export async function updateIngredient(
+  id: number,
+  changes: Partial<Pick<SupplementIngredient, 'ingredient' | 'quantity' | 'unit' | 'order_index'>>,
+): Promise<void> {
+  const db = getDatabase()
+  if (changes.ingredient !== undefined) {
+    await db.run('UPDATE supplement_ingredients SET ingredient = ? WHERE id = ?;', [
+      changes.ingredient,
+      id,
+    ])
+  }
+  if (changes.quantity !== undefined) {
+    await db.run('UPDATE supplement_ingredients SET quantity = ? WHERE id = ?;', [changes.quantity, id])
+  }
+  if (changes.unit !== undefined) {
+    await db.run('UPDATE supplement_ingredients SET unit = ? WHERE id = ?;', [changes.unit, id])
+  }
+  if (changes.order_index !== undefined) {
+    await db.run('UPDATE supplement_ingredients SET order_index = ? WHERE id = ?;', [
+      changes.order_index,
+      id,
+    ])
+  }
+}
+
+export async function removeIngredient(id: number): Promise<void> {
+  const db = getDatabase()
+  await db.run('DELETE FROM supplement_ingredients WHERE id = ?;', [id])
 }
 
 export async function listSupplementLogs(dailyLogId: number): Promise<SupplementLog[]> {

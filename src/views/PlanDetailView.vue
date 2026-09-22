@@ -22,10 +22,13 @@ import {
   type PlanMeal,
 } from '@/services/planService'
 import {
-  addPlanSupplement,
+  createSupplement,
   deletePlanSupplement,
+  INGREDIENT_UNITS,
   listPlanSupplements,
+  type IngredientUnit,
   type PlanSupplement,
+  type SupplementType,
 } from '@/services/supplementService'
 import { iconForSlot } from '@/utils/mealSlotIcons'
 
@@ -44,11 +47,28 @@ const slotNotesOpen = reactive<Record<number, boolean>>({})
 const slotNotesText = reactive<Record<number, string>>({})
 const newItemForms = reactive<Record<number, { description: string; quantity: string; calories: string }>>({})
 const newGuideline = reactive<{ eat: string; avoid: string }>({ eat: '', avoid: '' })
-const newSupplement = reactive<{ name: string; dose: string; scheduledTime: string }>({
+interface NewIngredientRow {
+  ingredient: string
+  quantity: string
+  unit: IngredientUnit
+}
+
+const newSupplement = reactive<{
+  type: SupplementType
+  name: string
+  doseQuantity: string
+  doseUnit: IngredientUnit
+  scheduledTime: string
+  servingDescription: string
+}>({
+  type: 'simple',
   name: '',
-  dose: '',
+  doseQuantity: '',
+  doseUnit: 'g',
   scheduledTime: '',
+  servingDescription: '',
 })
+const newIngredients = ref<NewIngredientRow[]>([{ ingredient: '', quantity: '', unit: 'g' }])
 
 function mealsForSlot(slotId: number): PlanMeal[] {
   return meals.value.filter((m) => m.slot_id === slotId)
@@ -153,19 +173,48 @@ async function removeGuideline(id: number) {
   guidelines.value = guidelines.value.filter((g) => g.id !== id)
 }
 
+function addIngredientRow() {
+  newIngredients.value.push({ ingredient: '', quantity: '', unit: 'g' })
+}
+
+function removeIngredientRow(index: number) {
+  newIngredients.value.splice(index, 1)
+}
+
 async function addSupplement() {
   if (!newSupplement.name.trim()) return
-  await addPlanSupplement({
+
+  const doseQuantity = String(newSupplement.doseQuantity).trim()
+  const dose = doseQuantity ? `${doseQuantity}${newSupplement.doseUnit}` : null
+
+  await createSupplement({
     plan_id: planId.value,
     name: newSupplement.name.trim(),
-    dose: newSupplement.dose.trim() || null,
+    dose: newSupplement.type === 'simple' ? dose : null,
     scheduled_time: newSupplement.scheduledTime || null,
     with_meal_slot: null,
     notes: null,
+    type: newSupplement.type,
+    serving_description: newSupplement.type === 'recipe' ? newSupplement.servingDescription.trim() || null : null,
+    ingredients:
+      newSupplement.type === 'recipe'
+        ? newIngredients.value
+            .filter((row) => row.ingredient.trim())
+            .map((row, index) => ({
+              ingredient: row.ingredient.trim(),
+              quantity: row.quantity ? Number(row.quantity) : null,
+              unit: row.unit,
+              order_index: index,
+            }))
+        : undefined,
   })
+
   newSupplement.name = ''
-  newSupplement.dose = ''
+  newSupplement.doseQuantity = ''
+  newSupplement.doseUnit = 'g'
   newSupplement.scheduledTime = ''
+  newSupplement.servingDescription = ''
+  newIngredients.value = [{ ingredient: '', quantity: '', unit: 'g' }]
   supplements.value = await listPlanSupplements(planId.value)
 }
 
@@ -291,7 +340,8 @@ onMounted(load)
           <span>
             <span class="text-text">{{ supplement.name }}</span>
             <span class="text-text-muted">
-              <template v-if="supplement.dose"> · {{ supplement.dose }}</template>
+              <template v-if="supplement.type === 'recipe'"> · receita</template>
+              <template v-else-if="supplement.dose"> · {{ supplement.dose }}</template>
               <template v-if="supplement.scheduled_time"> · {{ supplement.scheduled_time }}</template>
             </span>
           </span>
@@ -302,33 +352,124 @@ onMounted(load)
       </ul>
       <p v-else class="mb-3 text-sm text-text-muted">Nenhum suplemento adicionado.</p>
 
-      <div class="flex flex-wrap gap-2">
-        <input
-          v-model="newSupplement.name"
-          type="text"
-          placeholder="Nome"
-          class="min-w-0 flex-1 rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
-          @keyup.enter="addSupplement"
-        />
-        <input
-          v-model="newSupplement.dose"
-          type="text"
-          placeholder="Dose"
-          class="w-20 rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
-          @keyup.enter="addSupplement"
-        />
-        <input
-          v-model="newSupplement.scheduledTime"
-          type="time"
-          class="rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
-        />
+      <div class="mb-3 grid grid-cols-2 gap-2">
         <button
           type="button"
-          class="flex shrink-0 items-center justify-center rounded-lg bg-primary/15 px-2.5 text-primary"
-          aria-label="Adicionar suplemento"
+          class="rounded-xl border px-3 py-2 text-xs font-medium transition-colors"
+          :class="
+            newSupplement.type === 'simple'
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-border text-text-muted'
+          "
+          @click="newSupplement.type = 'simple'"
+        >
+          Simples
+        </button>
+        <button
+          type="button"
+          class="rounded-xl border px-3 py-2 text-xs font-medium transition-colors"
+          :class="
+            newSupplement.type === 'recipe'
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-border text-text-muted'
+          "
+          @click="newSupplement.type = 'recipe'"
+        >
+          Receita
+        </button>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <div class="flex flex-wrap gap-2">
+          <input
+            v-model="newSupplement.name"
+            type="text"
+            :placeholder="newSupplement.type === 'recipe' ? 'Nome da receita' : 'Nome'"
+            class="min-w-0 flex-1 rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
+          />
+          <input
+            v-model="newSupplement.scheduledTime"
+            type="time"
+            class="rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
+          />
+        </div>
+
+        <div v-if="newSupplement.type === 'simple'" class="flex gap-2">
+          <input
+            v-model="newSupplement.doseQuantity"
+            type="text"
+            inputmode="decimal"
+            placeholder="Dose"
+            class="w-20 rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
+          />
+          <select
+            v-model="newSupplement.doseUnit"
+            class="rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
+          >
+            <option v-for="unit in INGREDIENT_UNITS" :key="unit" :value="unit">{{ unit }}</option>
+          </select>
+        </div>
+
+        <template v-else>
+          <input
+            v-model="newSupplement.servingDescription"
+            type="text"
+            placeholder="Porção (opcional) — ex: 1 copo (300ml) aprox."
+            class="w-full rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
+          />
+
+          <div
+            v-for="(row, index) in newIngredients"
+            :key="index"
+            class="flex flex-wrap items-center gap-2"
+          >
+            <input
+              v-model="row.ingredient"
+              type="text"
+              placeholder="Ingrediente"
+              class="min-w-0 flex-1 rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
+            />
+            <input
+              v-model="row.quantity"
+              type="text"
+              inputmode="decimal"
+              placeholder="Qtd"
+              class="w-16 rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
+            />
+            <select
+              v-model="row.unit"
+              class="rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text outline-none focus:border-primary"
+            >
+              <option v-for="unit in INGREDIENT_UNITS" :key="unit" :value="unit">{{ unit }}</option>
+            </select>
+            <button
+              v-if="newIngredients.length > 1"
+              type="button"
+              class="shrink-0 text-text-muted hover:text-danger"
+              aria-label="Remover ingrediente"
+              @click="removeIngredientRow(index)"
+            >
+              <Trash2 :size="16" :stroke-width="1.75" />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            class="flex items-center gap-1 self-start text-xs font-medium text-primary"
+            @click="addIngredientRow"
+          >
+            <Plus :size="14" :stroke-width="2" />
+            Adicionar ingrediente
+          </button>
+        </template>
+
+        <button
+          type="button"
+          class="mt-1 flex items-center justify-center gap-1 self-start rounded-lg bg-primary/15 px-3 py-1.5 text-sm font-medium text-primary"
           @click="addSupplement"
         >
-          <Plus :size="18" :stroke-width="2" />
+          <Plus :size="16" :stroke-width="2" />
+          Adicionar suplemento
         </button>
       </div>
     </AppCard>

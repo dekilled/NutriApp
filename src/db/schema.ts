@@ -115,3 +115,23 @@ CREATE INDEX IF NOT EXISTS idx_supplement_logs_daily_log_id ON supplement_logs(d
 CREATE INDEX IF NOT EXISTS idx_activity_sessions_daily_log_id ON activity_sessions(daily_log_id);
 CREATE INDEX IF NOT EXISTS idx_activity_segments_session_id ON activity_segments(session_id);
 `
+
+// Adicionada na migration v3 (suplementos do tipo "receita", com múltiplos
+// ingredientes). Fica fora de CREATE_TABLES_SQL porque plan_supplements já
+// existe desde a v1 — aqui só a tabela nova, as colunas em plan_supplements
+// entram via ALTER TABLE na própria migration v3.
+export const CREATE_SUPPLEMENT_INGREDIENTS_SQL = `
+CREATE TABLE IF NOT EXISTS supplement_ingredients (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  supplement_id    INTEGER NOT NULL,
+  ingredient       TEXT NOT NULL,
+  quantity         REAL,
+  unit             TEXT,
+  order_index      INTEGER DEFAULT 0,
+  FOREIGN KEY (supplement_id) REFERENCES plan_supplements(id)
+    ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_supplement_ingredients_supplement_id
+  ON supplement_ingredients(supplement_id);
+`

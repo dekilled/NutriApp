@@ -1,6 +1,6 @@
 import type { SQLiteDBConnection } from '@capacitor-community/sqlite'
 
-import { CREATE_TABLES_SQL } from './schema'
+import { CREATE_SUPPLEMENT_INGREDIENTS_SQL, CREATE_TABLES_SQL } from './schema'
 
 export interface Migration {
   version: number
@@ -21,9 +21,17 @@ CREATE TABLE IF NOT EXISTS plan_slot_notes (
 );
 `
 
+const ADD_SUPPLEMENT_RECIPES_SQL = `
+ALTER TABLE plan_supplements ADD COLUMN type TEXT DEFAULT 'simple';
+ALTER TABLE plan_supplements ADD COLUMN serving_description TEXT;
+
+${CREATE_SUPPLEMENT_INGREDIENTS_SQL}
+`
+
 export const migrations: Migration[] = [
   { version: 1, up: CREATE_TABLES_SQL },
   { version: 2, up: ADD_QUANTITY_AND_SLOT_NOTES_SQL },
+  { version: 3, up: ADD_SUPPLEMENT_RECIPES_SQL },
 ]
 
 // NOTA: a lista original tem 9 nomes, não 8 — mantidos todos para não perder
