@@ -3,7 +3,7 @@ import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import router from './router'
-import { initDatabase } from './services/database'
+import { initDatabase } from './db'
 
 import './assets/styles/main.css'
 

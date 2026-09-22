@@ -1,9 +1,10 @@
-<script setup>
+<script setup lang="ts">
 const links = [
   { to: '/', label: 'Início' },
-  { to: '/nutrition', label: 'Nutrição' },
+  { to: '/plan', label: 'Plano' },
+  { to: '/daily-log', label: 'Registro' },
   { to: '/activity', label: 'Atividade' },
-  { to: '/profile', label: 'Perfil' },
+  { to: '/history', label: 'Histórico' },
 ]
 </script>
 
@@ -15,7 +16,7 @@ const links = [
       v-for="link in links"
       :key="link.to"
       :to="link.to"
-      class="px-3 py-1 text-sm text-neutral-500 [&.router-link-exact-active]:text-emerald-600 [&.router-link-exact-active]:font-semibold"
+      class="px-2 py-1 text-xs text-neutral-500 [&.router-link-exact-active]:text-emerald-600 [&.router-link-exact-active]:font-semibold"
     >
       {{ link.label }}
     </RouterLink>

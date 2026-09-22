@@ -7,9 +7,14 @@ const routes = [
     component: () => import('@/views/HomeView.vue'),
   },
   {
-    path: '/nutrition',
-    name: 'nutrition',
-    component: () => import('@/views/NutritionView.vue'),
+    path: '/plan',
+    name: 'plan',
+    component: () => import('@/views/PlanView.vue'),
+  },
+  {
+    path: '/daily-log',
+    name: 'daily-log',
+    component: () => import('@/views/DailyLogView.vue'),
   },
   {
     path: '/activity',
@@ -17,9 +22,9 @@ const routes = [
     component: () => import('@/views/ActivityView.vue'),
   },
   {
-    path: '/profile',
-    name: 'profile',
-    component: () => import('@/views/ProfileView.vue'),
+    path: '/history',
+    name: 'history',
+    component: () => import('@/views/HistoryView.vue'),
   },
 ]
 
