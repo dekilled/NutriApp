@@ -87,3 +87,26 @@ export async function updateMealLogStatus(id: number, status: MealLogStatus): Pr
     id,
   ])
 }
+
+export interface DayAdherence {
+  log_date: string
+  total: number
+  done: number
+}
+
+/** Adesão diária (refeições feitas vs. total registrado) num intervalo de datas [from, to]. */
+export async function getAdherenceByDateRange(fromDate: string, toDate: string): Promise<DayAdherence[]> {
+  const db = getDatabase()
+  const { values } = await db.query(
+    `SELECT dl.log_date as log_date,
+            COUNT(ml.id) as total,
+            SUM(CASE WHEN ml.status = 'done' THEN 1 ELSE 0 END) as done
+     FROM daily_logs dl
+     LEFT JOIN meal_logs ml ON ml.daily_log_id = dl.id
+     WHERE dl.log_date BETWEEN ? AND ?
+     GROUP BY dl.log_date
+     ORDER BY dl.log_date ASC;`,
+    [fromDate, toDate],
+  )
+  return (values ?? []) as DayAdherence[]
+}

@@ -74,3 +74,31 @@ export async function logSupplement(
   )
   return result.changes?.lastId ?? 0
 }
+
+export async function deletePlanSupplement(id: number): Promise<void> {
+  const db = getDatabase()
+  await db.run('DELETE FROM plan_supplements WHERE id = ?;', [id])
+}
+
+export interface SupplementHistoryDay {
+  log_date: string
+  status: SupplementLogStatus
+}
+
+/** Histórico dos últimos N dias de um suplemento, para o mini calendário de checks. */
+export async function getSupplementHistory(
+  planSupplementId: number,
+  days: number,
+): Promise<SupplementHistoryDay[]> {
+  const db = getDatabase()
+  const { values } = await db.query(
+    `SELECT dl.log_date as log_date, sl.status as status
+     FROM daily_logs dl
+     LEFT JOIN supplement_logs sl
+       ON sl.daily_log_id = dl.id AND sl.plan_supplement_id = ?
+     ORDER BY dl.log_date DESC
+     LIMIT ?;`,
+    [planSupplementId, days],
+  )
+  return (values ?? []) as SupplementHistoryDay[]
+}

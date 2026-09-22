@@ -66,3 +66,24 @@ export async function listActivitySegments(sessionId: number): Promise<ActivityS
   )
   return (values ?? []) as ActivitySegment[]
 }
+
+export interface SessionWithSegments extends ActivitySession {
+  segments: ActivitySegment[]
+}
+
+/** Sessões mais recentes (de qualquer dia) com seus segmentos já carregados. */
+export async function listRecentSessions(limit: number): Promise<SessionWithSegments[]> {
+  const db = getDatabase()
+  const { values } = await db.query(
+    'SELECT * FROM activity_sessions WHERE ended_at IS NOT NULL ORDER BY started_at DESC LIMIT ?;',
+    [limit],
+  )
+  const sessions = (values ?? []) as ActivitySession[]
+
+  const withSegments: SessionWithSegments[] = []
+  for (const session of sessions) {
+    const segments = await listActivitySegments(session.id)
+    withSegments.push({ ...session, segments })
+  }
+  return withSegments
+}

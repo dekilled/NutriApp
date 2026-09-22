@@ -7,7 +7,24 @@ export interface Migration {
   up: string
 }
 
-export const migrations: Migration[] = [{ version: 1, up: CREATE_TABLES_SQL }]
+const ADD_QUANTITY_AND_SLOT_NOTES_SQL = `
+ALTER TABLE plan_meals ADD COLUMN quantity TEXT;
+
+CREATE TABLE IF NOT EXISTS plan_slot_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id INTEGER NOT NULL,
+  slot_id INTEGER NOT NULL,
+  notes TEXT,
+  UNIQUE(plan_id, slot_id),
+  FOREIGN KEY (plan_id) REFERENCES nutrition_plan(id) ON DELETE CASCADE,
+  FOREIGN KEY (slot_id) REFERENCES meal_slots(id) ON DELETE CASCADE
+);
+`
+
+export const migrations: Migration[] = [
+  { version: 1, up: CREATE_TABLES_SQL },
+  { version: 2, up: ADD_QUANTITY_AND_SLOT_NOTES_SQL },
+]
 
 // NOTA: a lista original tem 9 nomes, não 8 — mantidos todos para não perder
 // nenhum horário de refeição do plano.

@@ -20,6 +20,7 @@ export interface PlanMeal {
   slot_id: number
   scheduled_time: string | null
   description: string
+  quantity: string | null
   calories: number | null
   protein_g: number | null
   carbs_g: number | null
@@ -45,6 +46,12 @@ export async function listPlans(): Promise<NutritionPlan[]> {
   const db = getDatabase()
   const { values } = await db.query('SELECT * FROM nutrition_plan ORDER BY created_at DESC;')
   return (values ?? []) as NutritionPlan[]
+}
+
+export async function getPlan(planId: number): Promise<NutritionPlan | null> {
+  const db = getDatabase()
+  const { values } = await db.query('SELECT * FROM nutrition_plan WHERE id = ?;', [planId])
+  return (values?.[0] as NutritionPlan | undefined) ?? null
 }
 
 export async function getActivePlan(): Promise<NutritionPlan | null> {
@@ -83,13 +90,14 @@ export async function addPlanMeal(
   const db = getDatabase()
   const result = await db.run(
     `INSERT INTO plan_meals
-      (plan_id, slot_id, scheduled_time, description, calories, protein_g, carbs_g, fat_g, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      (plan_id, slot_id, scheduled_time, description, quantity, calories, protein_g, carbs_g, fat_g, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       input.plan_id,
       input.slot_id,
       input.scheduled_time,
       input.description,
+      input.quantity,
       input.calories,
       input.protein_g,
       input.carbs_g,
@@ -98,6 +106,27 @@ export async function addPlanMeal(
     ],
   )
   return result.changes?.lastId ?? 0
+}
+
+export async function updatePlanMeal(
+  id: number,
+  changes: Partial<Pick<PlanMeal, 'scheduled_time' | 'notes'>>,
+): Promise<void> {
+  const db = getDatabase()
+  if (changes.scheduled_time !== undefined) {
+    await db.run('UPDATE plan_meals SET scheduled_time = ? WHERE id = ?;', [
+      changes.scheduled_time,
+      id,
+    ])
+  }
+  if (changes.notes !== undefined) {
+    await db.run('UPDATE plan_meals SET notes = ? WHERE id = ?;', [changes.notes, id])
+  }
+}
+
+export async function deletePlanMeal(id: number): Promise<void> {
+  const db = getDatabase()
+  await db.run('DELETE FROM plan_meals WHERE id = ?;', [id])
 }
 
 export async function listFoodGuidelines(planId: number): Promise<FoodGuideline[]> {
@@ -113,4 +142,27 @@ export async function addFoodGuideline(input: Omit<FoodGuideline, 'id'>): Promis
     [input.plan_id, input.food, input.type, input.reason],
   )
   return result.changes?.lastId ?? 0
+}
+
+export async function deleteFoodGuideline(id: number): Promise<void> {
+  const db = getDatabase()
+  await db.run('DELETE FROM food_guidelines WHERE id = ?;', [id])
+}
+
+export async function getSlotNotes(planId: number, slotId: number): Promise<string> {
+  const db = getDatabase()
+  const { values } = await db.query(
+    'SELECT notes FROM plan_slot_notes WHERE plan_id = ? AND slot_id = ?;',
+    [planId, slotId],
+  )
+  return (values?.[0]?.notes as string | undefined) ?? ''
+}
+
+export async function setSlotNotes(planId: number, slotId: number, notes: string): Promise<void> {
+  const db = getDatabase()
+  await db.run(
+    `INSERT INTO plan_slot_notes (plan_id, slot_id, notes) VALUES (?, ?, ?)
+     ON CONFLICT(plan_id, slot_id) DO UPDATE SET notes = excluded.notes;`,
+    [planId, slotId, notes],
+  )
 }

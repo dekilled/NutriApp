@@ -14,7 +14,11 @@ let webStoreInitialized = false
 async function ensureWebStore(): Promise<void> {
   if (Capacitor.getPlatform() !== 'web' || webStoreInitialized) return
 
+  const { defineCustomElements } = await import('jeep-sqlite/loader')
+  await defineCustomElements(window)
+
   const jeepSqliteEl = document.createElement('jeep-sqlite')
+  jeepSqliteEl.autoSave = true
   document.body.appendChild(jeepSqliteEl)
   await customElements.whenDefined('jeep-sqlite')
   await sqliteConnection.initWebStore()
