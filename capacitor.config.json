@@ -1,0 +1,15 @@
+{
+  "appId": "com.nutriroutine.app",
+  "appName": "Nutri Routine",
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorSQLite": {
+      "iosDatabaseLocation": "Library/CapacitorDatabase",
+      "androidIsEncryption": false
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon_config_sample",
+      "iconColor": "#10b981"
+    }
+  }
+}
