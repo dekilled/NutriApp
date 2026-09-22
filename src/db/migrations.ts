@@ -40,11 +40,24 @@ ALTER TABLE activity_sessions ADD COLUMN goal_type TEXT;
 ALTER TABLE activity_sessions ADD COLUMN goal_value REAL;
 `
 
+// Registro diário: overnight precisa de um estado "preparado" (à noite,
+// antes de comer) separado do status normal. is_controllable/is_overnight
+// vão em plan_slot_notes (não em plan_meals) porque já é a tabela
+// (plan_id, slot_id) única existente — funciona mesmo para slots sem
+// nenhum item cadastrado ainda, o que plan_meals não permitiria.
+const ADD_DAILY_LOG_CONTROL_FIELDS_SQL = `
+ALTER TABLE plan_slot_notes ADD COLUMN is_controllable INTEGER DEFAULT 1;
+ALTER TABLE plan_slot_notes ADD COLUMN is_overnight INTEGER DEFAULT 0;
+ALTER TABLE meal_logs ADD COLUMN prepared_at TEXT;
+ALTER TABLE meal_logs ADD COLUMN is_prepared INTEGER DEFAULT 0;
+`
+
 export const migrations: Migration[] = [
   { version: 1, up: CREATE_TABLES_SQL },
   { version: 2, up: ADD_QUANTITY_AND_SLOT_NOTES_SQL },
   { version: 3, up: ADD_SUPPLEMENT_RECIPES_SQL },
   { version: 4, up: ADD_EXERCISE_SESSION_FIELDS_SQL },
+  { version: 5, up: ADD_DAILY_LOG_CONTROL_FIELDS_SQL },
 ]
 
 // NOTA: a lista original tem 9 nomes, não 8 — mantidos todos para não perder

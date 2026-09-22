@@ -26,3 +26,10 @@ export function formatShortDate(dateIso: string): string {
   const date = new Date(`${dateIso}T00:00:00`)
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 }
+
+/** Ex: "Terça, 22 set" — capitaliza a primeira letra do dia da semana. */
+export function formatWeekdayLong(dateIso: string): string {
+  const date = new Date(`${dateIso}T00:00:00`)
+  const formatted = date.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' })
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1).replace('.', '')
+}

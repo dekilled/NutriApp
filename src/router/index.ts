@@ -38,6 +38,12 @@ const routes = [
     meta: { title: 'Resumo do exercício' },
   },
   {
+    path: '/daily-log',
+    name: 'daily-log',
+    component: () => import('@/views/DailyLogView.vue'),
+    meta: { title: 'Registro diário' },
+  },
+  {
     path: '/plans',
     name: 'plans',
     component: () => import('@/views/PlansView.vue'),

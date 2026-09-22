@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { Check, Circle, Dumbbell } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import AppCard from '@/components/ui/AppCard.vue'
 import ProgressBar from '@/components/ui/ProgressBar.vue'
 import WeeklyBarChart, { type WeeklyBar } from '@/components/ui/WeeklyBarChart.vue'
+import { useDailyLog } from '@/composables/useDailyLog'
 import { getAdherenceByDateRange, getOrCreateDailyLog, type DayAdherence } from '@/services/dailyLogService'
 import { getActivePlan } from '@/services/planService'
 import { listPlanSupplements, listSupplementLogs, type PlanSupplement } from '@/services/supplementService'
@@ -13,7 +15,9 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { addDaysIso, startOfMonthIso, startOfWeekIso, todayIso, WEEKDAY_LABELS } from '@/utils/date'
 import { estimateAverageSpeedKmh } from '@/utils/speed'
 
+const router = useRouter()
 const { settings } = useSettingsStore()
+const { slots: dailySlots, loadDay } = useDailyLog()
 
 const monthlyStats = ref<{ done: number; total: number }>({ done: 0, total: 0 })
 const weeklyStats = ref<{ done: number; total: number }>({ done: 0, total: 0 })
@@ -48,6 +52,19 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 }
 
+const nextSlots = computed(() => {
+  const nowHHMM = new Date().toTimeString().slice(0, 5)
+  const upcoming = dailySlots.value.filter(
+    (s) => s.log?.status !== 'done' && s.log?.status !== 'skipped' && (s.scheduledTime ?? '99:99') >= nowHHMM,
+  )
+  const source = upcoming.length > 0 ? upcoming : dailySlots.value
+  return source.slice(0, 3)
+})
+
+function goToDailyLog() {
+  router.push({ name: 'daily-log' })
+}
+
 function averageSpeed(session: SessionWithSegments): string {
   const speed =
     session.avg_speed_kmh ??
@@ -67,6 +84,7 @@ async function load() {
       getAdherenceByDateRange(weekStart, addDaysIso(weekStart, 6)),
       getActivePlan(),
       listRecentSessions(3),
+      loadDay(today),
     ])
 
     monthlyStats.value = sumAdherence(monthDays)
@@ -114,6 +132,23 @@ onMounted(load)
         {{ weeklyStats.done }} de {{ weeklyStats.total }} refeições
       </p>
       <WeeklyBarChart :bars="weeklyBars" />
+    </AppCard>
+
+    <AppCard title="Hoje">
+      <p v-if="!nextSlots.length" class="text-sm text-text-muted">Nenhuma refeição planejada.</p>
+      <ul v-else class="mb-3 flex flex-col divide-y divide-divider">
+        <li v-for="slot in nextSlots" :key="slot.slotId" class="flex items-center justify-between py-2 first:pt-0 last:pb-0">
+          <span class="text-sm text-text">{{ slot.slotName }}</span>
+          <span class="text-xs text-text-muted">{{ slot.scheduledTime ?? '—' }}</span>
+        </li>
+      </ul>
+      <button
+        type="button"
+        class="w-full rounded-xl bg-surface-alt py-2.5 text-sm font-medium text-primary"
+        @click="goToDailyLog"
+      >
+        Ver dia completo
+      </button>
     </AppCard>
 
     <AppCard title="Suplementos de hoje">

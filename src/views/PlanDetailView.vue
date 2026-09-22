@@ -9,12 +9,14 @@ import {
   deleteFoodGuideline,
   deletePlanMeal,
   getPlan,
-  getSlotNotes,
+  getSlotConfig,
   listFoodGuidelines,
   listMealSlots,
   listPlanMeals,
   setActivePlan,
+  setSlotControllable,
   setSlotNotes,
+  setSlotOvernight,
   updatePlanMeal,
   type FoodGuideline,
   type MealSlot,
@@ -45,6 +47,8 @@ const loading = ref(true)
 const slotTimes = reactive<Record<number, string>>({})
 const slotNotesOpen = reactive<Record<number, boolean>>({})
 const slotNotesText = reactive<Record<number, string>>({})
+const slotControllable = reactive<Record<number, boolean>>({})
+const slotOvernight = reactive<Record<number, boolean>>({})
 const newItemForms = reactive<Record<number, { description: string; quantity: string; calories: string }>>({})
 const newGuideline = reactive<{ eat: string; avoid: string }>({ eat: '', avoid: '' })
 interface NewIngredientRow {
@@ -107,7 +111,10 @@ async function load() {
     for (const slot of slotList) {
       const firstItem = mealList.find((m) => m.slot_id === slot.id)
       slotTimes[slot.id] = firstItem?.scheduled_time ?? ''
-      slotNotesText[slot.id] = await getSlotNotes(planId.value, slot.id)
+      const config = await getSlotConfig(planId.value, slot.id)
+      slotNotesText[slot.id] = config.notes
+      slotControllable[slot.id] = config.isControllable
+      slotOvernight[slot.id] = config.isOvernight
     }
   } finally {
     loading.value = false
@@ -157,6 +164,20 @@ async function toggleSlotNotes(slotId: number) {
 
 async function saveSlotNotes(slotId: number) {
   await setSlotNotes(planId.value, slotId, slotNotesText[slotId] ?? '')
+}
+
+function isOvernightEligible(slotName: string): boolean {
+  return slotName.toLowerCase().includes('overnight') || slotName === 'Ceia'
+}
+
+async function toggleControllable(slotId: number) {
+  slotControllable[slotId] = !slotControllable[slotId]
+  await setSlotControllable(planId.value, slotId, slotControllable[slotId])
+}
+
+async function toggleOvernight(slotId: number) {
+  slotOvernight[slotId] = !slotOvernight[slotId]
+  await setSlotOvernight(planId.value, slotId, slotOvernight[slotId])
 }
 
 async function addGuideline(type: 'eat' | 'avoid') {
@@ -264,6 +285,28 @@ onMounted(load)
           @change="updateSlotTime(slot.id)"
         />
       </div>
+
+      <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <label class="flex items-center gap-1.5 text-xs text-text-muted">
+          <input
+            type="checkbox"
+            class="accent-primary"
+            :checked="slotControllable[slot.id]"
+            @change="toggleControllable(slot.id)"
+          />
+          Controlável
+        </label>
+        <label v-if="isOvernightEligible(slot.name)" class="flex items-center gap-1.5 text-xs text-text-muted">
+          <input
+            type="checkbox"
+            class="accent-primary"
+            :checked="slotOvernight[slot.id]"
+            @change="toggleOvernight(slot.id)"
+          />
+          Overnight
+        </label>
+      </div>
+      <p class="mt-1 text-[11px] text-text-muted">Desative para refeições que outros preparam</p>
 
       <div class="my-3 border-t border-divider"></div>
 

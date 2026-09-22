@@ -149,20 +149,58 @@ export async function deleteFoodGuideline(id: number): Promise<void> {
   await db.run('DELETE FROM food_guidelines WHERE id = ?;', [id])
 }
 
-export async function getSlotNotes(planId: number, slotId: number): Promise<string> {
+export interface PlanSlotConfig {
+  notes: string
+  isControllable: boolean
+  isOvernight: boolean
+}
+
+const DEFAULT_SLOT_CONFIG: PlanSlotConfig = { notes: '', isControllable: true, isOvernight: false }
+
+async function ensureSlotConfigRow(planId: number, slotId: number): Promise<number> {
   const db = getDatabase()
   const { values } = await db.query(
-    'SELECT notes FROM plan_slot_notes WHERE plan_id = ? AND slot_id = ?;',
+    'SELECT id FROM plan_slot_notes WHERE plan_id = ? AND slot_id = ?;',
     [planId, slotId],
   )
-  return (values?.[0]?.notes as string | undefined) ?? ''
+  if (values && values.length > 0) return values[0].id as number
+
+  const result = await db.run('INSERT INTO plan_slot_notes (plan_id, slot_id) VALUES (?, ?);', [
+    planId,
+    slotId,
+  ])
+  return result.changes?.lastId ?? 0
+}
+
+export async function getSlotConfig(planId: number, slotId: number): Promise<PlanSlotConfig> {
+  const db = getDatabase()
+  const { values } = await db.query(
+    'SELECT notes, is_controllable, is_overnight FROM plan_slot_notes WHERE plan_id = ? AND slot_id = ?;',
+    [planId, slotId],
+  )
+  const row = values?.[0]
+  if (!row) return { ...DEFAULT_SLOT_CONFIG }
+  return {
+    notes: (row.notes as string | null) ?? '',
+    isControllable: (row.is_controllable as number | null) !== 0,
+    isOvernight: (row.is_overnight as number | null) === 1,
+  }
 }
 
 export async function setSlotNotes(planId: number, slotId: number, notes: string): Promise<void> {
   const db = getDatabase()
-  await db.run(
-    `INSERT INTO plan_slot_notes (plan_id, slot_id, notes) VALUES (?, ?, ?)
-     ON CONFLICT(plan_id, slot_id) DO UPDATE SET notes = excluded.notes;`,
-    [planId, slotId, notes],
-  )
+  const id = await ensureSlotConfigRow(planId, slotId)
+  await db.run('UPDATE plan_slot_notes SET notes = ? WHERE id = ?;', [notes, id])
+}
+
+export async function setSlotControllable(planId: number, slotId: number, value: boolean): Promise<void> {
+  const db = getDatabase()
+  const id = await ensureSlotConfigRow(planId, slotId)
+  await db.run('UPDATE plan_slot_notes SET is_controllable = ? WHERE id = ?;', [value ? 1 : 0, id])
+}
+
+export async function setSlotOvernight(planId: number, slotId: number, value: boolean): Promise<void> {
+  const db = getDatabase()
+  const id = await ensureSlotConfigRow(planId, slotId)
+  await db.run('UPDATE plan_slot_notes SET is_overnight = ? WHERE id = ?;', [value ? 1 : 0, id])
 }
