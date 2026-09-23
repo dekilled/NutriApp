@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Footprints, PersonStanding, Zap } from 'lucide-vue-next'
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import AppToggle from '@/components/ui/AppToggle.vue'
@@ -8,7 +8,14 @@ import type { ExerciseMode } from '@/services/activityService'
 import { useExerciseSession, type ExerciseGoal } from '@/composables/useExerciseSession'
 
 const router = useRouter()
-const { startSession, permissionError } = useExerciseSession()
+const { status, startSession, permissionError } = useExerciseSession()
+
+onMounted(() => {
+  // Já tem sessão rodando/pausada? Não deixa começar outra por cima.
+  if (status.value === 'active' || status.value === 'paused') {
+    router.replace({ name: 'exercise-active' })
+  }
+})
 
 const modes: Array<{ value: ExerciseMode; label: string; icon: typeof Footprints }> = [
   { value: 'walking', label: 'Caminhada', icon: Footprints },

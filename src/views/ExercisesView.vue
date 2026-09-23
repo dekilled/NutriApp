@@ -6,10 +6,12 @@ import { useRouter } from 'vue-router'
 import AppCard from '@/components/ui/AppCard.vue'
 import ExerciseTimeline from '@/components/ui/ExerciseTimeline.vue'
 import { listRecentSessions, type SessionWithSegments } from '@/services/activityService'
+import { useActivityStore } from '@/stores/useActivityStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { estimateAverageSpeedKmh } from '@/utils/speed'
 
 const router = useRouter()
+const activity = useActivityStore()
 const { settings } = useSettingsStore()
 const sessions = ref<SessionWithSegments[]>([])
 const loading = ref(true)
@@ -48,6 +50,14 @@ function startNewSession() {
 }
 
 onMounted(async () => {
+  // Já tem uma sessão rodando (ou pausada)? Não faz sentido mostrar a
+  // lista — volta direto pra ela, já que não existe outro link na UI
+  // pra chegar lá de novo.
+  if (activity.status === 'active' || activity.status === 'paused') {
+    router.replace({ name: 'exercise-active' })
+    return
+  }
+
   try {
     sessions.value = await listRecentSessions(50)
   } finally {
