@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import AppHeader from '@/components/AppHeader.vue'
 import BottomNav from '@/components/BottomNav.vue'
+import ExerciseProgressBar from '@/components/ExerciseProgressBar.vue'
 import { useActivityStore } from '@/stores/useActivityStore'
 
 const router = useRouter()
@@ -24,6 +25,7 @@ onMounted(() => {
 <template>
   <div class="flex h-full flex-col bg-bg text-text">
     <AppHeader />
+    <ExerciseProgressBar />
     <main class="flex-1 overflow-y-auto pb-24">
       <RouterView />
     </main>
