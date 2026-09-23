@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -79,6 +80,21 @@ function isPastTime(scheduledTime: string | null): boolean {
   if (!scheduledTime) return false
   if (currentDate.value !== todayIso()) return false
   return scheduledTime < nowHHMM()
+}
+
+// Cada slot começa expandido; o usuário pode ocultar a lista de itens.
+const expandedSlots = ref<Record<number, boolean>>({})
+
+function isExpanded(slotId: number): boolean {
+  return expandedSlots.value[slotId] ?? true
+}
+
+function toggleExpanded(slotId: number): void {
+  expandedSlots.value[slotId] = !isExpanded(slotId)
+}
+
+function slotDoneCount(slot: DailySlot): number {
+  return slot.items.filter((item) => item.log?.status === 'done' || item.log?.status === 'skipped').length
 }
 
 function openActions(slot: DailySlot, item: DailyMealItem) {
@@ -189,104 +205,117 @@ onUnmounted(() => {
         <div class="h-px flex-1 bg-primary/40"></div>
       </div>
 
-      <!-- Overnight: dois botões próprios, sem bottom sheet — uma linha por item -->
-      <AppCard v-if="slot.isOvernight" v-for="item in slot.items" :key="`${slot.slotId}-${item.planMealId}`">
-        <div class="flex items-center gap-3">
-          <Moon :size="20" :stroke-width="1.75" class="shrink-0 text-accent-blue" />
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-text">
-              <span v-if="slot.scheduledTime" class="text-text-muted">{{ slot.scheduledTime }} </span>{{ slot.slotName }}
-            </p>
-            <p class="truncate text-xs text-text-muted">{{ item.description }}</p>
+      <!-- Um bloco único por refeição, com header expandir/ocultar -->
+      <AppCard>
+        <button type="button" class="flex w-full items-center justify-between gap-3 text-left" @click="toggleExpanded(slot.slotId)">
+          <div class="flex min-w-0 items-center gap-3">
+            <Moon v-if="slot.isOvernight" :size="20" :stroke-width="1.75" class="shrink-0 text-accent-blue" />
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-text">
+                <span v-if="slot.scheduledTime" class="text-text-muted">{{ slot.scheduledTime }} </span>{{ slot.slotName }}
+              </p>
+              <p class="text-xs text-text-muted">{{ slotDoneCount(slot) }}/{{ slot.items.length }} itens</p>
+            </div>
           </div>
-        </div>
-        <div class="mt-3 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            class="flex items-center justify-center gap-1.5 rounded-xl border py-2 text-xs font-medium transition-colors"
-            :class="
-              item.log?.is_prepared
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-border text-text-muted'
-            "
-            @click="markPrepared(slot.slotId, item.planMealId)"
+          <ChevronDown
+            :size="18"
+            :stroke-width="2"
+            class="shrink-0 text-text-muted transition-transform"
+            :class="{ 'rotate-180': isExpanded(slot.slotId) }"
+          />
+        </button>
+
+        <div v-if="isExpanded(slot.slotId)" class="mt-3 flex flex-col gap-2">
+          <!-- Overnight: dois botões próprios, sem bottom sheet -->
+          <div
+            v-if="slot.isOvernight"
+            v-for="item in slot.items"
+            :key="item.planMealId"
+            class="rounded-xl bg-surface-alt px-3 py-2.5"
           >
-            <Check :size="14" :stroke-width="2.5" />
-            Preparar
-          </button>
+            <p class="mb-2 text-xs text-text-muted">{{ item.description }}</p>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                class="flex items-center justify-center gap-1.5 rounded-xl border py-2 text-xs font-medium transition-colors"
+                :class="
+                  item.log?.is_prepared
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border text-text-muted'
+                "
+                @click="markPrepared(slot.slotId, item.planMealId)"
+              >
+                <Check :size="14" :stroke-width="2.5" />
+                Preparar
+              </button>
+              <button
+                type="button"
+                class="flex items-center justify-center gap-1.5 rounded-xl border py-2 text-xs font-medium transition-colors"
+                :class="
+                  item.log?.status === 'done'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border text-text-muted'
+                "
+                @click="markDone(slot.slotId, item.planMealId)"
+              >
+                <Check :size="14" :stroke-width="2.5" />
+                Comi
+              </button>
+            </div>
+          </div>
+
+          <!-- Slots normais: tap abre bottom sheet -->
           <button
+            v-else
+            v-for="item in slot.items"
+            :key="item.planMealId"
             type="button"
-            class="flex items-center justify-center gap-1.5 rounded-xl border py-2 text-xs font-medium transition-colors"
-            :class="
-              item.log?.status === 'done'
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-border text-text-muted'
-            "
-            @click="markDone(slot.slotId, item.planMealId)"
+            class="flex items-center gap-3 rounded-xl bg-surface-alt px-3 py-2.5 text-left"
+            :class="[
+              item.log?.status === 'done' ? 'opacity-80' : '',
+              !item.log && isPastTime(slot.scheduledTime) ? 'border-l-4 border-amber-500' : '',
+            ]"
+            @click="openActions(slot, item)"
           >
-            <Check :size="14" :stroke-width="2.5" />
-            Comi
+            <CheckCircle2
+              v-if="item.log?.status === 'done' && !item.log.actual_description"
+              :size="18"
+              :stroke-width="1.75"
+              class="shrink-0 text-primary"
+            />
+            <Pencil
+              v-else-if="item.log?.status === 'done' && item.log.actual_description"
+              :size="18"
+              :stroke-width="1.75"
+              class="shrink-0 text-accent-blue"
+            />
+            <SkipForward
+              v-else-if="item.log?.status === 'skipped'"
+              :size="18"
+              :stroke-width="1.75"
+              class="shrink-0 text-text-muted"
+            />
+            <AlertTriangle
+              v-else-if="isPastTime(slot.scheduledTime)"
+              :size="18"
+              :stroke-width="1.75"
+              class="shrink-0 text-amber-500"
+            />
+            <Square v-else :size="18" :stroke-width="1.75" class="shrink-0 text-text-muted" />
+
+            <div class="min-w-0 flex-1">
+              <p
+                v-if="item.log?.status === 'done' && item.log.actual_description"
+                class="truncate text-xs italic text-text-muted"
+              >
+                "{{ item.log.actual_description }}"
+              </p>
+              <p v-else-if="item.log?.status === 'skipped'" class="text-xs text-text-muted">Pulado</p>
+              <p v-else class="truncate text-sm text-text">{{ item.description || '—' }}</p>
+            </div>
           </button>
         </div>
       </AppCard>
-
-      <!-- Slots normais: tap abre bottom sheet — uma linha por item -->
-      <button
-        v-else
-        v-for="item in slot.items"
-        :key="`${slot.slotId}-${item.planMealId}`"
-        type="button"
-        class="text-left"
-        @click="openActions(slot, item)"
-      >
-        <div
-          class="flex items-center gap-3 rounded-[20px] bg-surface px-5 py-4 shadow-[var(--shadow-card)] ring-1 ring-border/60"
-          :class="[
-            item.log?.status === 'done' ? 'opacity-80' : '',
-            !item.log && isPastTime(slot.scheduledTime) ? 'border-l-4 border-amber-500' : '',
-          ]"
-        >
-          <CheckCircle2
-            v-if="item.log?.status === 'done' && !item.log.actual_description"
-            :size="20"
-            :stroke-width="1.75"
-            class="shrink-0 text-primary"
-          />
-          <Pencil
-            v-else-if="item.log?.status === 'done' && item.log.actual_description"
-            :size="20"
-            :stroke-width="1.75"
-            class="shrink-0 text-accent-blue"
-          />
-          <SkipForward
-            v-else-if="item.log?.status === 'skipped'"
-            :size="20"
-            :stroke-width="1.75"
-            class="shrink-0 text-text-muted"
-          />
-          <AlertTriangle
-            v-else-if="isPastTime(slot.scheduledTime)"
-            :size="20"
-            :stroke-width="1.75"
-            class="shrink-0 text-amber-500"
-          />
-          <Square v-else :size="20" :stroke-width="1.75" class="shrink-0 text-text-muted" />
-
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-text">
-              <span v-if="slot.scheduledTime" class="text-text-muted">{{ slot.scheduledTime }} </span>{{ slot.slotName }}
-            </p>
-            <p
-              v-if="item.log?.status === 'done' && item.log.actual_description"
-              class="truncate text-xs italic text-text-muted"
-            >
-              "{{ item.log.actual_description }}"
-            </p>
-            <p v-else-if="item.log?.status === 'skipped'" class="text-xs text-text-muted">Pulado</p>
-            <p v-else class="truncate text-xs text-text-muted">{{ item.description || '—' }}</p>
-          </div>
-        </div>
-      </button>
     </template>
 
     <AppCard title="Suplementos de hoje">
