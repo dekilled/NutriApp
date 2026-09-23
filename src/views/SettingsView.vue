@@ -127,15 +127,16 @@ const themeOptions = [
             />
           </button>
         </div>
-        <input
-          v-if="settings.checkpointsByTimeEnabled"
-          v-model.number="settings.checkpointsByTimeIntervalMin"
-          type="number"
-          min="1"
-          step="1"
-          placeholder="Intervalo em minutos"
-          class="mt-2 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-text outline-none focus:border-primary"
-        />
+        <div v-if="settings.checkpointsByTimeEnabled" class="mt-2 overflow-visible">
+          <input
+            v-model.number="settings.checkpointsByTimeIntervalMin"
+            type="number"
+            min="1"
+            step="1"
+            placeholder="Intervalo em minutos"
+            class="w-full rounded-lg border border-border bg-surface-alt py-2 pl-3 pr-10 text-sm text-text outline-none focus:border-primary"
+          />
+        </div>
 
         <p class="mt-4 rounded-lg bg-surface-alt px-3 py-2 text-xs text-text-muted">
           Voz gerada por Fish Audio. Sem internet, os comentários da Emma ficam em silêncio — a sessão continua normalmente.
