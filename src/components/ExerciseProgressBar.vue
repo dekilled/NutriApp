@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { Footprints, PersonStanding } from 'lucide-vue-next'
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { useExerciseSession } from '@/composables/useExerciseSession'
 
 const router = useRouter()
+const route = useRoute()
 const { status, distanceKm, elapsedSeconds, goal, currentType } = useExerciseSession()
 
-const visible = computed(() => status.value === 'active' || status.value === 'paused')
+// Na tela da sessão ativa esses mesmos dados já aparecem em detalhe —
+// a barrinha aqui seria redundante.
+const visible = computed(
+  () => (status.value === 'active' || status.value === 'paused') && route.name !== 'exercise-active',
+)
 
 // Sem meta (ou meta de tempo, que não se aplica à distância desta barra):
 // janelas de 1km rolando a partir de 0 (0-1, 1-2, 2-3...). Com meta de

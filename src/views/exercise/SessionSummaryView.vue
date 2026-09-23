@@ -44,6 +44,11 @@ async function handleSave() {
     saving.value = false
   }
 }
+
+function handleDiscard() {
+  resetSession()
+  router.push({ name: 'exercises' })
+}
 </script>
 
 <template>
@@ -83,14 +88,24 @@ async function handleSave() {
       />
     </AppCard>
 
-    <button
-      type="button"
-      class="rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-contrast disabled:opacity-60"
-      :disabled="saving"
-      @click="handleSave"
-    >
-      {{ saving ? 'Salvando…' : 'Salvar' }}
-    </button>
+    <div class="flex gap-3">
+      <button
+        type="button"
+        class="flex-1 rounded-2xl border border-border py-3 text-sm font-semibold text-text-muted disabled:opacity-60"
+        :disabled="saving"
+        @click="handleDiscard"
+      >
+        Descartar
+      </button>
+      <button
+        type="button"
+        class="flex-1 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-contrast disabled:opacity-60"
+        :disabled="saving"
+        @click="handleSave"
+      >
+        {{ saving ? 'Salvando…' : 'Salvar' }}
+      </button>
+    </div>
   </div>
   <p v-else class="p-4 text-sm text-text-muted">Nenhuma sessão para exibir.</p>
 </template>
