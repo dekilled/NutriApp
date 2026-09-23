@@ -3,6 +3,7 @@ import { Footprints, PersonStanding, Zap } from 'lucide-vue-next'
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
+import AppToggle from '@/components/ui/AppToggle.vue'
 import type { ExerciseMode } from '@/services/activityService'
 import { useExerciseSession, type ExerciseGoal } from '@/composables/useExerciseSession'
 
@@ -70,19 +71,7 @@ async function handleStart() {
     <div class="rounded-[20px] bg-surface px-5 py-4 shadow-[var(--shadow-card)] ring-1 ring-border/60">
       <div class="flex items-center justify-between">
         <p class="text-sm font-medium text-text">Definir meta</p>
-        <button
-          type="button"
-          role="switch"
-          :aria-checked="defineGoal"
-          class="relative h-6 w-11 shrink-0 rounded-full transition-colors"
-          :class="defineGoal ? 'bg-primary' : 'bg-surface-alt'"
-          @click="defineGoal = !defineGoal"
-        >
-          <span
-            class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
-            :class="defineGoal ? 'translate-x-5' : 'translate-x-0.5'"
-          />
-        </button>
+        <AppToggle v-model="defineGoal" />
       </div>
 
       <div v-if="defineGoal" class="mt-4">

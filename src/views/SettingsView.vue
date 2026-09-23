@@ -2,6 +2,7 @@
 import { Laptop, Moon, Sun } from 'lucide-vue-next'
 
 import AppCard from '@/components/ui/AppCard.vue'
+import AppToggle from '@/components/ui/AppToggle.vue'
 import { useTheme } from '@/composables/useTheme'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import packageJson from '../../package.json'
@@ -71,19 +72,7 @@ const themeOptions = [
           <p class="text-sm font-medium text-text">Ativar assistente</p>
           <p class="text-xs text-text-muted">Anuncia checkpoints durante o exercício</p>
         </div>
-        <button
-          type="button"
-          role="switch"
-          :aria-checked="settings.assistantEnabled"
-          class="relative h-6 w-11 shrink-0 rounded-full transition-colors"
-          :class="settings.assistantEnabled ? 'bg-primary' : 'bg-surface-alt'"
-          @click="settings.assistantEnabled = !settings.assistantEnabled"
-        >
-          <span
-            class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
-            :class="settings.assistantEnabled ? 'translate-x-5' : 'translate-x-0.5'"
-          />
-        </button>
+        <AppToggle v-model="settings.assistantEnabled" />
       </div>
 
       <template v-if="settings.assistantEnabled">
@@ -96,36 +85,12 @@ const themeOptions = [
 
         <div class="mb-3 flex items-center justify-between overflow-visible px-4">
           <p class="min-w-0 text-sm text-text">Checkpoints por km</p>
-          <button
-            type="button"
-            role="switch"
-            :aria-checked="settings.checkpointsByKmEnabled"
-            class="relative h-6 w-11 shrink-0 rounded-full transition-colors"
-            :class="settings.checkpointsByKmEnabled ? 'bg-primary' : 'bg-surface-alt'"
-            @click="settings.checkpointsByKmEnabled = !settings.checkpointsByKmEnabled"
-          >
-            <span
-              class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
-              :class="settings.checkpointsByKmEnabled ? 'translate-x-5' : 'translate-x-0.5'"
-            />
-          </button>
+          <AppToggle v-model="settings.checkpointsByKmEnabled" />
         </div>
 
         <div class="flex items-center justify-between overflow-visible px-4">
           <p class="min-w-0 text-sm text-text">Checkpoints por tempo</p>
-          <button
-            type="button"
-            role="switch"
-            :aria-checked="settings.checkpointsByTimeEnabled"
-            class="relative h-6 w-11 shrink-0 rounded-full transition-colors"
-            :class="settings.checkpointsByTimeEnabled ? 'bg-primary' : 'bg-surface-alt'"
-            @click="settings.checkpointsByTimeEnabled = !settings.checkpointsByTimeEnabled"
-          >
-            <span
-              class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
-              :class="settings.checkpointsByTimeEnabled ? 'translate-x-5' : 'translate-x-0.5'"
-            />
-          </button>
+          <AppToggle v-model="settings.checkpointsByTimeEnabled" />
         </div>
         <div v-if="settings.checkpointsByTimeEnabled" class="mt-2 overflow-visible">
           <input
