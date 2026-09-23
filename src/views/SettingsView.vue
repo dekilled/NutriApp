@@ -65,9 +65,9 @@ const themeOptions = [
       </p>
     </AppCard>
 
-    <AppCard title="Assistente de voz">
-      <div class="mb-4 flex items-center justify-between">
-        <div>
+    <AppCard title="Assistente de voz" class="overflow-visible">
+      <div class="mb-4 flex items-center justify-between overflow-visible px-4">
+        <div class="min-w-0">
           <p class="text-sm font-medium text-text">Ativar assistente</p>
           <p class="text-xs text-text-muted">Anuncia checkpoints durante o exercício</p>
         </div>
@@ -94,8 +94,8 @@ const themeOptions = [
 
         <p class="mb-3 text-xs text-text-muted">Idioma: Português (Brasil) — fixo por enquanto.</p>
 
-        <div class="mb-3 flex items-center justify-between">
-          <p class="text-sm text-text">Checkpoints por km</p>
+        <div class="mb-3 flex items-center justify-between overflow-visible px-4">
+          <p class="min-w-0 text-sm text-text">Checkpoints por km</p>
           <button
             type="button"
             role="switch"
@@ -111,8 +111,8 @@ const themeOptions = [
           </button>
         </div>
 
-        <div class="flex items-center justify-between">
-          <p class="text-sm text-text">Checkpoints por tempo</p>
+        <div class="flex items-center justify-between overflow-visible px-4">
+          <p class="min-w-0 text-sm text-text">Checkpoints por tempo</p>
           <button
             type="button"
             role="switch"
