@@ -45,17 +45,17 @@ export async function listMealLogs(dailyLogId: number): Promise<MealLog[]> {
   return (values ?? []) as MealLog[]
 }
 
-async function findMealLog(dailyLogId: number, slotId: number): Promise<MealLog | null> {
+async function findMealLog(dailyLogId: number, planMealId: number): Promise<MealLog | null> {
   const db = getDatabase()
   const { values } = await db.query(
-    'SELECT * FROM meal_logs WHERE daily_log_id = ? AND slot_id = ?;',
-    [dailyLogId, slotId],
+    'SELECT * FROM meal_logs WHERE daily_log_id = ? AND plan_meal_id = ?;',
+    [dailyLogId, planMealId],
   )
   return (values?.[0] as MealLog | undefined) ?? null
 }
 
-async function ensureMealLog(dailyLogId: number, slotId: number, planMealId: number | null): Promise<MealLog> {
-  const existing = await findMealLog(dailyLogId, slotId)
+async function ensureMealLog(dailyLogId: number, slotId: number, planMealId: number): Promise<MealLog> {
+  const existing = await findMealLog(dailyLogId, planMealId)
   if (existing) return existing
 
   const db = getDatabase()
@@ -80,7 +80,7 @@ async function ensureMealLog(dailyLogId: number, slotId: number, planMealId: num
 }
 
 /** Marca como feito conforme o plano (sem descrição alternativa). */
-export async function markMealDone(dailyLogId: number, slotId: number, planMealId: number | null): Promise<void> {
+export async function markMealDone(dailyLogId: number, slotId: number, planMealId: number): Promise<void> {
   const db = getDatabase()
   const log = await ensureMealLog(dailyLogId, slotId, planMealId)
   await db.run(
@@ -93,7 +93,7 @@ export async function markMealDone(dailyLogId: number, slotId: number, planMealI
 export async function markMealModified(
   dailyLogId: number,
   slotId: number,
-  planMealId: number | null,
+  planMealId: number,
   description: string,
   calories: number | null,
 ): Promise<void> {
@@ -105,7 +105,7 @@ export async function markMealModified(
   )
 }
 
-export async function markMealSkipped(dailyLogId: number, slotId: number, planMealId: number | null): Promise<void> {
+export async function markMealSkipped(dailyLogId: number, slotId: number, planMealId: number): Promise<void> {
   const db = getDatabase()
   const log = await ensureMealLog(dailyLogId, slotId, planMealId)
   await db.run(
@@ -114,10 +114,10 @@ export async function markMealSkipped(dailyLogId: number, slotId: number, planMe
   )
 }
 
-/** Desfaz o registro do slot, voltando para pendente (não mexe em is_prepared). */
-export async function resetMealLog(dailyLogId: number, slotId: number): Promise<void> {
+/** Desfaz o registro do item, voltando para pendente (não mexe em is_prepared). */
+export async function resetMealLog(dailyLogId: number, planMealId: number): Promise<void> {
   const db = getDatabase()
-  const log = await findMealLog(dailyLogId, slotId)
+  const log = await findMealLog(dailyLogId, planMealId)
   if (!log) return
   await db.run(
     "UPDATE meal_logs SET status = 'pending', actual_description = NULL, actual_calories = NULL, logged_at = NULL WHERE id = ?;",
@@ -129,7 +129,7 @@ export async function resetMealLog(dailyLogId: number, slotId: number): Promise<
 export async function toggleMealPrepared(
   dailyLogId: number,
   slotId: number,
-  planMealId: number | null,
+  planMealId: number,
 ): Promise<boolean> {
   const db = getDatabase()
   const log = await ensureMealLog(dailyLogId, slotId, planMealId)

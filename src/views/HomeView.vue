@@ -55,7 +55,9 @@ function formatDate(iso: string): string {
 const nextSlots = computed(() => {
   const nowHHMM = new Date().toTimeString().slice(0, 5)
   const upcoming = dailySlots.value.filter(
-    (s) => s.log?.status !== 'done' && s.log?.status !== 'skipped' && (s.scheduledTime ?? '99:99') >= nowHHMM,
+    (s) =>
+      s.items.some((item) => item.log?.status !== 'done' && item.log?.status !== 'skipped') &&
+      (s.scheduledTime ?? '99:99') >= nowHHMM,
   )
   const source = upcoming.length > 0 ? upcoming : dailySlots.value
   return source.slice(0, 3)

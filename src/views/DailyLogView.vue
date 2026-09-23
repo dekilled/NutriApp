@@ -15,7 +15,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 
 import AppBottomSheet from '@/components/ui/AppBottomSheet.vue'
 import AppCard from '@/components/ui/AppCard.vue'
-import { useDailyLog, type DailySlot } from '@/composables/useDailyLog'
+import { useDailyLog, type DailyMealItem, type DailySlot } from '@/composables/useDailyLog'
 import { formatWeekdayLong, todayIso } from '@/utils/date'
 
 const {
@@ -39,9 +39,16 @@ const {
 
 const dateInputEl = ref<HTMLInputElement | null>(null)
 
+interface ActiveItemContext {
+  slotId: number
+  slotName: string
+  isControllable: boolean
+  item: DailyMealItem
+}
+
 const sheetOpen = ref(false)
 const sheetMode = ref<'actions' | 'describe'>('actions')
-const activeSlot = ref<DailySlot | null>(null)
+const activeItem = ref<ActiveItemContext | null>(null)
 const describeText = ref('')
 const describeCalories = ref('')
 
@@ -74,49 +81,48 @@ function isPastTime(scheduledTime: string | null): boolean {
   return scheduledTime < nowHHMM()
 }
 
-function openActions(slot: DailySlot) {
-  if (slot.isOvernight) return // overnight tem botões próprios, sem bottom sheet
-  activeSlot.value = slot
+function openActions(slot: DailySlot, item: DailyMealItem) {
+  activeItem.value = { slotId: slot.slotId, slotName: slot.slotName, isControllable: slot.isControllable, item }
   sheetMode.value = 'actions'
   sheetOpen.value = true
 }
 
 function closeSheet() {
   sheetOpen.value = false
-  activeSlot.value = null
+  activeItem.value = null
   describeText.value = ''
   describeCalories.value = ''
 }
 
 function openDescribe() {
-  if (!activeSlot.value) return
-  describeText.value = activeSlot.value.log?.actual_description ?? ''
-  describeCalories.value = activeSlot.value.log?.actual_calories?.toString() ?? ''
+  if (!activeItem.value) return
+  describeText.value = activeItem.value.item.log?.actual_description ?? ''
+  describeCalories.value = activeItem.value.item.log?.actual_calories?.toString() ?? ''
   sheetMode.value = 'describe'
 }
 
 async function handleDone() {
-  if (!activeSlot.value) return
-  await markDone(activeSlot.value.slotId)
+  if (!activeItem.value) return
+  await markDone(activeItem.value.slotId, activeItem.value.item.planMealId)
   closeSheet()
 }
 
 async function handleSkip() {
-  if (!activeSlot.value) return
-  await markSkipped(activeSlot.value.slotId)
+  if (!activeItem.value) return
+  await markSkipped(activeItem.value.slotId, activeItem.value.item.planMealId)
   closeSheet()
 }
 
 async function handleUndo() {
-  if (!activeSlot.value) return
-  await undoLog(activeSlot.value.slotId)
+  if (!activeItem.value) return
+  await undoLog(activeItem.value.item.planMealId)
   closeSheet()
 }
 
 async function handleSaveDescribe() {
-  if (!activeSlot.value || !describeText.value.trim()) return
+  if (!activeItem.value || !describeText.value.trim()) return
   const calories = describeCalories.value ? Number(describeCalories.value) : null
-  await markModified(activeSlot.value.slotId, describeText.value.trim(), calories)
+  await markModified(activeItem.value.slotId, activeItem.value.item.planMealId, describeText.value.trim(), calories)
   closeSheet()
 }
 
@@ -183,15 +189,15 @@ onUnmounted(() => {
         <div class="h-px flex-1 bg-primary/40"></div>
       </div>
 
-      <!-- Overnight: dois botões próprios, sem bottom sheet -->
-      <AppCard v-if="slot.isOvernight">
+      <!-- Overnight: dois botões próprios, sem bottom sheet — uma linha por item -->
+      <AppCard v-if="slot.isOvernight" v-for="item in slot.items" :key="`${slot.slotId}-${item.planMealId}`">
         <div class="flex items-center gap-3">
           <Moon :size="20" :stroke-width="1.75" class="shrink-0 text-accent-blue" />
           <div class="min-w-0 flex-1">
             <p class="text-sm font-medium text-text">
               <span v-if="slot.scheduledTime" class="text-text-muted">{{ slot.scheduledTime }} </span>{{ slot.slotName }}
             </p>
-            <p class="truncate text-xs text-text-muted">{{ slot.description }}</p>
+            <p class="truncate text-xs text-text-muted">{{ item.description }}</p>
           </div>
         </div>
         <div class="mt-3 grid grid-cols-2 gap-2">
@@ -199,11 +205,11 @@ onUnmounted(() => {
             type="button"
             class="flex items-center justify-center gap-1.5 rounded-xl border py-2 text-xs font-medium transition-colors"
             :class="
-              slot.log?.is_prepared
+              item.log?.is_prepared
                 ? 'border-primary bg-primary/10 text-primary'
                 : 'border-border text-text-muted'
             "
-            @click="markPrepared(slot.slotId)"
+            @click="markPrepared(slot.slotId, item.planMealId)"
           >
             <Check :size="14" :stroke-width="2.5" />
             Preparar
@@ -212,11 +218,11 @@ onUnmounted(() => {
             type="button"
             class="flex items-center justify-center gap-1.5 rounded-xl border py-2 text-xs font-medium transition-colors"
             :class="
-              slot.log?.status === 'done'
+              item.log?.status === 'done'
                 ? 'border-primary bg-primary/10 text-primary'
                 : 'border-border text-text-muted'
             "
-            @click="markDone(slot.slotId)"
+            @click="markDone(slot.slotId, item.planMealId)"
           >
             <Check :size="14" :stroke-width="2.5" />
             Comi
@@ -224,29 +230,36 @@ onUnmounted(() => {
         </div>
       </AppCard>
 
-      <!-- Slots normais: tap abre bottom sheet -->
-      <button v-else type="button" class="text-left" @click="openActions(slot)">
+      <!-- Slots normais: tap abre bottom sheet — uma linha por item -->
+      <button
+        v-else
+        v-for="item in slot.items"
+        :key="`${slot.slotId}-${item.planMealId}`"
+        type="button"
+        class="text-left"
+        @click="openActions(slot, item)"
+      >
         <div
           class="flex items-center gap-3 rounded-[20px] bg-surface px-5 py-4 shadow-[var(--shadow-card)] ring-1 ring-border/60"
           :class="[
-            slot.log?.status === 'done' ? 'opacity-80' : '',
-            !slot.log && isPastTime(slot.scheduledTime) ? 'border-l-4 border-amber-500' : '',
+            item.log?.status === 'done' ? 'opacity-80' : '',
+            !item.log && isPastTime(slot.scheduledTime) ? 'border-l-4 border-amber-500' : '',
           ]"
         >
           <CheckCircle2
-            v-if="slot.log?.status === 'done' && !slot.log.actual_description"
+            v-if="item.log?.status === 'done' && !item.log.actual_description"
             :size="20"
             :stroke-width="1.75"
             class="shrink-0 text-primary"
           />
           <Pencil
-            v-else-if="slot.log?.status === 'done' && slot.log.actual_description"
+            v-else-if="item.log?.status === 'done' && item.log.actual_description"
             :size="20"
             :stroke-width="1.75"
             class="shrink-0 text-accent-blue"
           />
           <SkipForward
-            v-else-if="slot.log?.status === 'skipped'"
+            v-else-if="item.log?.status === 'skipped'"
             :size="20"
             :stroke-width="1.75"
             class="shrink-0 text-text-muted"
@@ -264,13 +277,13 @@ onUnmounted(() => {
               <span v-if="slot.scheduledTime" class="text-text-muted">{{ slot.scheduledTime }} </span>{{ slot.slotName }}
             </p>
             <p
-              v-if="slot.log?.status === 'done' && slot.log.actual_description"
+              v-if="item.log?.status === 'done' && item.log.actual_description"
               class="truncate text-xs italic text-text-muted"
             >
-              "{{ slot.log.actual_description }}"
+              "{{ item.log.actual_description }}"
             </p>
-            <p v-else-if="slot.log?.status === 'skipped'" class="text-xs text-text-muted">Pulado</p>
-            <p v-else class="truncate text-xs text-text-muted">{{ slot.log?.status === 'done' ? slot.description : (slot.description || '—') }}</p>
+            <p v-else-if="item.log?.status === 'skipped'" class="text-xs text-text-muted">Pulado</p>
+            <p v-else class="truncate text-xs text-text-muted">{{ item.description || '—' }}</p>
           </div>
         </div>
       </button>
@@ -308,11 +321,11 @@ onUnmounted(() => {
     </AppCard>
 
     <AppBottomSheet :open="sheetOpen" @close="closeSheet">
-      <template v-if="sheetMode === 'actions' && activeSlot">
-        <p class="mb-3 text-xs text-text-muted">{{ activeSlot.slotName }}</p>
+      <template v-if="sheetMode === 'actions' && activeItem">
+        <p class="mb-3 text-xs text-text-muted">{{ activeItem.slotName }} — {{ activeItem.item.description }}</p>
         <div class="flex flex-col gap-2">
           <button
-            v-if="activeSlot.isControllable"
+            v-if="activeItem.isControllable"
             type="button"
             class="flex items-center gap-2 rounded-xl bg-surface-alt px-4 py-3 text-sm font-medium text-text"
             @click="handleDone"
@@ -326,7 +339,7 @@ onUnmounted(() => {
             @click="openDescribe"
           >
             <Pencil :size="18" :stroke-width="1.75" class="text-accent-blue" />
-            {{ activeSlot.isControllable ? 'Fiz diferente' : 'Registrar' }}
+            {{ activeItem.isControllable ? 'Fiz diferente' : 'Registrar' }}
           </button>
           <button
             type="button"
@@ -337,7 +350,7 @@ onUnmounted(() => {
             Pulei
           </button>
           <button
-            v-if="activeSlot.log"
+            v-if="activeItem.item.log"
             type="button"
             class="flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-text-muted"
             @click="handleUndo"
@@ -347,8 +360,8 @@ onUnmounted(() => {
         </div>
       </template>
 
-      <template v-else-if="sheetMode === 'describe' && activeSlot">
-        <p class="mb-3 text-xs text-text-muted">{{ activeSlot.slotName }}</p>
+      <template v-else-if="sheetMode === 'describe' && activeItem">
+        <p class="mb-3 text-xs text-text-muted">{{ activeItem.slotName }} — {{ activeItem.item.description }}</p>
         <label class="mb-1 block text-sm text-text" for="describe-text">O que você comeu?</label>
         <textarea
           id="describe-text"

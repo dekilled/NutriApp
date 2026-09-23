@@ -21,15 +21,19 @@ import {
 } from '@/services/supplementService'
 import { addDaysIso, todayIso } from '@/utils/date'
 
+export interface DailyMealItem {
+  planMealId: number
+  description: string
+  log: MealLog | null
+}
+
 export interface DailySlot {
   slotId: number
   slotName: string
   scheduledTime: string | null
-  description: string
-  planMealId: number | null
   isControllable: boolean
   isOvernight: boolean
-  log: MealLog | null
+  items: DailyMealItem[]
 }
 
 const currentDate = ref(todayIso())
@@ -41,8 +45,8 @@ const slots = ref<DailySlot[]>([])
 const loading = ref(true)
 const activePlanId = ref<number | null>(null)
 
-function mealLogForSlot(slotId: number): MealLog | null {
-  return mealLogs.value.find((log) => log.slot_id === slotId) ?? null
+function mealLogForItem(planMealId: number): MealLog | null {
+  return mealLogs.value.find((log) => log.plan_meal_id === planMealId) ?? null
 }
 
 async function loadDay(date: string): Promise<void> {
@@ -89,11 +93,13 @@ async function loadDay(date: string): Promise<void> {
         slotId: slotDef.id,
         slotName: slotDef.name,
         scheduledTime: items[0].scheduled_time,
-        description: items.map((i) => i.description).join(' + '),
-        planMealId: items[0].id,
         isControllable: config.isControllable,
         isOvernight: config.isOvernight,
-        log: mealLogForSlot(slotDef.id),
+        items: items.map((item) => ({
+          planMealId: item.id,
+          description: item.description,
+          log: mealLogForItem(item.id),
+        })),
       })
     }
 
@@ -113,40 +119,44 @@ async function refreshLogs(): Promise<void> {
   if (!dailyLog.value) return
   mealLogs.value = await listMealLogs(dailyLog.value.id)
   supplementLogs.value = await listSupplementLogs(dailyLog.value.id)
-  slots.value = slots.value.map((slot) => ({ ...slot, log: mealLogForSlot(slot.slotId) }))
+  slots.value = slots.value.map((slot) => ({
+    ...slot,
+    items: slot.items.map((item) => ({ ...item, log: mealLogForItem(item.planMealId) })),
+  }))
 }
 
-async function markDone(slotId: number): Promise<void> {
+async function markDone(slotId: number, planMealId: number): Promise<void> {
   if (!dailyLog.value) return
-  const slot = slots.value.find((s) => s.slotId === slotId)
-  await markMealDone(dailyLog.value.id, slotId, slot?.planMealId ?? null)
+  await markMealDone(dailyLog.value.id, slotId, planMealId)
   await refreshLogs()
 }
 
-async function markModified(slotId: number, description: string, calories: number | null = null): Promise<void> {
+async function markModified(
+  slotId: number,
+  planMealId: number,
+  description: string,
+  calories: number | null = null,
+): Promise<void> {
   if (!dailyLog.value) return
-  const slot = slots.value.find((s) => s.slotId === slotId)
-  await markMealModified(dailyLog.value.id, slotId, slot?.planMealId ?? null, description, calories)
+  await markMealModified(dailyLog.value.id, slotId, planMealId, description, calories)
   await refreshLogs()
 }
 
-async function markSkipped(slotId: number): Promise<void> {
+async function markSkipped(slotId: number, planMealId: number): Promise<void> {
   if (!dailyLog.value) return
-  const slot = slots.value.find((s) => s.slotId === slotId)
-  await markMealSkipped(dailyLog.value.id, slotId, slot?.planMealId ?? null)
+  await markMealSkipped(dailyLog.value.id, slotId, planMealId)
   await refreshLogs()
 }
 
-async function markPrepared(slotId: number): Promise<void> {
+async function markPrepared(slotId: number, planMealId: number): Promise<void> {
   if (!dailyLog.value) return
-  const slot = slots.value.find((s) => s.slotId === slotId)
-  await toggleMealPrepared(dailyLog.value.id, slotId, slot?.planMealId ?? null)
+  await toggleMealPrepared(dailyLog.value.id, slotId, planMealId)
   await refreshLogs()
 }
 
-async function undoLog(slotId: number): Promise<void> {
+async function undoLog(planMealId: number): Promise<void> {
   if (!dailyLog.value) return
-  await resetMealLog(dailyLog.value.id, slotId)
+  await resetMealLog(dailyLog.value.id, planMealId)
   await refreshLogs()
 }
 
@@ -171,7 +181,7 @@ const nowDividerIndex = computed<number | null>(() => {
 })
 
 const doneCount = computed(() => mealLogs.value.filter((log) => log.status === 'done').length)
-const totalCount = computed(() => slots.value.length)
+const totalCount = computed(() => slots.value.reduce((sum, slot) => sum + slot.items.length, 0))
 
 export function useDailyLog() {
   return {
