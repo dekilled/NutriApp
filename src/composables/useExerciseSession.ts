@@ -6,7 +6,16 @@ import { computed, ref } from 'vue'
 import type { ExerciseGoalType, ExerciseMode, SegmentType } from '@/services/activityService'
 import { getOrCreateDailyLog } from '@/services/dailyLogService'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useSpeech } from '@/composables/useSpeech'
+import {
+  compareWithAverage,
+  getLast7DaysAverage,
+  toSessionSummary,
+  type SessionAverage,
+} from '@/composables/useSessionAnalysis'
 import { todayIso } from '@/utils/date'
+
+const USER_NAME = 'Eric'
 
 export interface ExerciseGoal {
   type: ExerciseGoalType
@@ -56,6 +65,12 @@ const SPEED_HISTORY_MAX_POINTS = 120
 const EARTH_RADIUS_M = 6371000
 const CALORIES_PER_KM_RUNNING = 60
 const CALORIES_PER_KM_WALKING = 50
+const DISTANCE_CHECKPOINT_KM = 0.5
+const GOAL_WARNING_PERCENT = 80
+
+function fmt(n: number, decimals = 1): string {
+  return n.toFixed(decimals).replace('.', ',')
+}
 
 function toRad(deg: number): number {
   return (deg * Math.PI) / 180
@@ -97,6 +112,20 @@ let clockTimer: ReturnType<typeof setInterval> | null = null
 let dailyLogId = 0
 let lastCheckpointKm = 0
 let lastCheckpointMin = 0
+let lastGoalExceededTick = 0
+
+// Emma: fila de checkpoints já anunciados (nunca repete o mesmo na mesma
+// sessão) + a média dos últimos 7 dias, buscada uma vez ao iniciar.
+const announcedCheckpoints = new Set<string>()
+let sessionAverage: SessionAverage | null = null
+
+function announceOnce(key: string, text: string): void {
+  const { settings } = useSettingsStore()
+  if (!settings.assistantEnabled) return
+  if (announcedCheckpoints.has(key)) return
+  announcedCheckpoints.add(key)
+  void useSpeech().speak(text)
+}
 
 const avgSpeedKmh = computed(() => {
   const hours = elapsedSeconds.value / 3600
@@ -148,6 +177,18 @@ const liveSegments = computed<SessionSegment[]>(() => {
 function commitTypeChange(newType: SegmentType) {
   closeCurrentSegment()
   openNewSegment(newType)
+
+  if (newType === 'run') {
+    const runCount = segments.value.filter((s) => s.type === 'run').length + 1 // +1: o que acabou de abrir
+    if (runCount === 2) {
+      announceOnce('run-2', `Olha só, temos progresso! Essa é sua segunda corrida hoje!`)
+    } else if (runCount === 3) {
+      announceOnce(
+        'run-3',
+        `Impressionante! Terceira corrida na mesma sessão. Você tá evoluindo demais, ${USER_NAME}!`,
+      )
+    }
+  }
 }
 
 /** Detecção automática caminhada/corrida por velocidade, com debounce de 8s. */
@@ -183,46 +224,85 @@ function updateDetectedType(speedKmh: number) {
   }
 }
 
-/**
- * Preparado para o futuro sistema de anúncios (voz/haptics) por checkpoint.
- * Hoje só marca a passagem do km/intervalo — nenhuma notificação é disparada.
- */
+function currentRunningKm(): number {
+  const runS = liveSegments.value.filter((s) => s.type === 'run').reduce((sum, s) => sum + s.durationS, 0)
+  const walkS = liveSegments.value.filter((s) => s.type === 'walk').reduce((sum, s) => sum + s.durationS, 0)
+  const activeS = runS + walkS
+  return activeS > 0 ? distanceKm.value * (runS / activeS) : 0
+}
+
+/** Checkpoints falados da Emma: a cada 500m, a cada N minutos e "superou a média". */
 function checkCheckpoints() {
   const { settings } = useSettingsStore()
 
   if (settings.checkpointsByKmEnabled) {
-    const kmMark = Math.floor(distanceKm.value)
-    if (kmMark > lastCheckpointKm) {
-      lastCheckpointKm = kmMark
+    const mark = Math.floor(distanceKm.value / DISTANCE_CHECKPOINT_KM)
+    if (mark > lastCheckpointKm) {
+      lastCheckpointKm = mark
+      announceOnce(
+        `dist-${mark}`,
+        `Você completou ${fmt(distanceKm.value)} quilômetros! Velocidade média: ${fmt(avgSpeedKmh.value)} quilômetros por hora. Continue assim!`,
+      )
     }
   }
 
   if (settings.checkpointsByTimeEnabled && settings.checkpointsByTimeIntervalMin > 0) {
-    const minuteMark = Math.floor(elapsedSeconds.value / 60)
-    if (
-      minuteMark > 0 &&
-      minuteMark % settings.checkpointsByTimeIntervalMin === 0 &&
-      minuteMark > lastCheckpointMin
-    ) {
-      lastCheckpointMin = minuteMark
+    const intervalMin = settings.checkpointsByTimeIntervalMin
+    const mark = Math.floor(elapsedSeconds.value / 60 / intervalMin)
+    if (mark > 0 && mark > lastCheckpointMin) {
+      lastCheckpointMin = mark
+      const totalMin = mark * intervalMin
+      announceOnce(
+        `time-${mark}`,
+        `${totalMin} minutos de atividade! Você já percorreu ${fmt(distanceKm.value)} quilômetros. Incrível, ${USER_NAME}!`,
+      )
+    }
+  }
+
+  if (sessionAverage && sessionAverage.avgRunningKm > 0) {
+    const runningKm = currentRunningKm()
+    if (runningKm > sessionAverage.avgRunningKm) {
+      announceOnce(
+        'beat-avg-running',
+        `Você já correu mais do que sua média dos últimos 7 dias! Continue, você tá arrasando!`,
+      )
     }
   }
 }
 
 async function checkGoal() {
-  if (!goal.value || goalReached.value) return
+  if (!goal.value) return
 
-  const reached =
-    goal.value.type === 'distance'
-      ? distanceKm.value >= goal.value.value
-      : elapsedSeconds.value / 60 >= goal.value.value
+  const isDistanceGoal = goal.value.type === 'distance'
+  const rawPercent = isDistanceGoal
+    ? (distanceKm.value / goal.value.value) * 100
+    : (elapsedSeconds.value / 60 / goal.value.value) * 100
 
-  if (reached) {
+  if (isDistanceGoal && !goalReached.value && rawPercent >= GOAL_WARNING_PERCENT && rawPercent < 100) {
+    const remainingM = Math.max(0, Math.round((goal.value.value - distanceKm.value) * 1000))
+    announceOnce('goal-80', `Tá quase lá, ${USER_NAME}! Faltam apenas ${remainingM} mé-tros para sua meta. Vai!`)
+  }
+
+  if (!goalReached.value && rawPercent >= 100) {
     goalReached.value = true
+    announceOnce(
+      'goal-100',
+      `Meta atingida! Parabéns, ${USER_NAME}! Você completou ${fmt(distanceKm.value)} quilômetros em ${Math.round(elapsedSeconds.value / 60)} minutos!`,
+    )
     try {
       await Haptics.vibrate({ duration: 400 })
     } catch {
       // dispositivo sem suporte a haptics — segue sem feedback tátil
+    }
+  }
+
+  if (isDistanceGoal && goalReached.value) {
+    const overshootKm = distanceKm.value - goal.value.value
+    const tick = Math.floor(overshootKm / DISTANCE_CHECKPOINT_KM)
+    if (tick > lastGoalExceededTick) {
+      lastGoalExceededTick = tick
+      const overshootM = Math.round(overshootKm * 1000)
+      announceOnce(`goal-exceeded-${tick}`, `Você foi ${overshootM} mé-tros além da sua meta! Isso é demais, ${USER_NAME}!`)
     }
   }
 }
@@ -297,6 +377,16 @@ function estimateCalories(): number {
 }
 
 async function startSession(selectedMode: ExerciseMode, selectedGoal: ExerciseGoal | null): Promise<void> {
+  announcedCheckpoints.clear()
+  sessionAverage = null
+  lastGoalExceededTick = 0
+
+  // Dispara o mais perto possível do clique (gesto do usuário) — o
+  // AudioContext compartilhado é criado/retomado dentro desta mesma
+  // chamada síncrona, antes de qualquer await, para não esbarrar na
+  // política de autoplay do WebView.
+  announceOnce('greeting', `Vamos lá, ${USER_NAME}! Boa sessão pra você!`)
+
   permissionError.value = null
 
   // Geolocation.requestPermissions() não existe no shim web do Capacitor —
@@ -335,6 +425,14 @@ async function startSession(selectedMode: ExerciseMode, selectedGoal: ExerciseGo
 
   status.value = 'active'
   startTimers()
+
+  getLast7DaysAverage()
+    .then((avg) => {
+      sessionAverage = avg
+    })
+    .catch(() => {
+      sessionAverage = null
+    })
 }
 
 function pauseSession(): void {
@@ -378,7 +476,57 @@ async function finishSession(): Promise<FinishedSession> {
   }
 
   lastFinishedSession.value = result
+  announceSessionSummary(result)
   return result
+}
+
+/** Resumo completo ao encerrar: uma única chamada a speak() com tudo junto. */
+function announceSessionSummary(result: FinishedSession): void {
+  const { settings } = useSettingsStore()
+  if (!settings.assistantEnabled) return
+
+  const summary = toSessionSummary(result)
+  const average = sessionAverage ?? {
+    avgDistanceKm: 0,
+    avgRunningKm: 0,
+    avgWalkingKm: 0,
+    avgDurationMin: 0,
+    avgSpeedKmh: 0,
+    totalSessions: 0,
+  }
+  const report = compareWithAverage(summary, average)
+
+  const parts: string[] = [
+    'Sessão encerrada!',
+    `Você percorreu ${fmt(summary.distanceKm)} quilômetros em ${Math.round(summary.durationMin)} minutos.`,
+    `Sendo ${fmt(summary.runningKm)} quilômetros correndo e ${fmt(summary.walkingKm)} quilômetros caminhando.`,
+  ]
+
+  if (average.totalSessions > 0) {
+    if (report.isRecord) {
+      parts.push(
+        `Comparando com sua média dos últimos 7 dias, você correu ${fmt(Math.abs(report.runningDiffKm))} quilômetros a mais com velocidade consistente. Recorde pessoal!`,
+      )
+    } else if (report.isConsistency) {
+      parts.push(`Você foi mais longe, mas num ritmo mais tranquilo. Isso se chama consistência, ${USER_NAME}. Muito bom!`)
+    } else if (report.isPaceRecord) {
+      parts.push('Mesma distância, porém mais rápido que sua média. Recorde de ritmo!')
+    } else if (report.walkedLessRanMore) {
+      parts.push('Seu fôlego tá melhorando. Você andou menos, mas correu mais. Evolução!')
+    } else if (report.distanceDiffKm <= 0) {
+      parts.push(`Hoje foi mais tranquilo, mas você foi lá e fez. Isso é o que importa, ${USER_NAME}!`)
+    }
+
+    if (report.firstRunAfterDaysWalking) {
+      parts.push('Olha só! Você voltou a correr. Que ótima notícia!')
+    }
+  }
+
+  if (summary.avgSpeedKmh > 0) {
+    parts.push(`Velocidade média de corrida: ${fmt(summary.avgSpeedKmh)} quilômetros por hora.`)
+  }
+
+  void useSpeech().speak(parts.join(' '))
 }
 
 function resetSession(): void {

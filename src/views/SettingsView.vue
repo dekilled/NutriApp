@@ -1,42 +1,19 @@
 <script setup lang="ts">
 import { Laptop, Moon, Sun } from 'lucide-vue-next'
-import { onMounted, onUnmounted, ref } from 'vue'
 
 import AppCard from '@/components/ui/AppCard.vue'
-import { useSpeech } from '@/composables/useSpeech'
 import { useTheme } from '@/composables/useTheme'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import packageJson from '../../package.json'
 
 const { preference, setPreference } = useTheme()
 const { settings } = useSettingsStore()
-const { getAvailableVoices, isSupported: speechSupported } = useSpeech()
 
 const themeOptions = [
   { value: 'light' as const, label: 'Claro', icon: Sun },
   { value: 'dark' as const, label: 'Escuro', icon: Moon },
   { value: 'system' as const, label: 'Sistema', icon: Laptop },
 ]
-
-const voices = ref<SpeechSynthesisVoice[]>([])
-
-function loadVoices() {
-  voices.value = getAvailableVoices()
-}
-
-onMounted(() => {
-  loadVoices()
-  // A lista de vozes carrega de forma assíncrona no Chromium/WebView.
-  if (speechSupported) {
-    window.speechSynthesis.addEventListener('voiceschanged', loadVoices)
-  }
-})
-
-onUnmounted(() => {
-  if (speechSupported) {
-    window.speechSynthesis.removeEventListener('voiceschanged', loadVoices)
-  }
-})
 </script>
 
 <template>
@@ -110,17 +87,10 @@ onUnmounted(() => {
       </div>
 
       <template v-if="settings.assistantEnabled">
-        <label class="mb-1 block text-sm text-text" for="voice-select">Voz</label>
-        <select
-          id="voice-select"
-          v-model="settings.assistantVoice"
-          class="mb-3 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-text outline-none focus:border-primary"
-        >
-          <option :value="null">Padrão do sistema</option>
-          <option v-for="voice in voices" :key="voice.name" :value="voice.name">
-            {{ voice.name }} ({{ voice.lang }})
-          </option>
-        </select>
+        <div class="mb-3 flex items-center justify-between rounded-lg bg-surface-alt px-3 py-2">
+          <span class="text-sm text-text">Voz</span>
+          <span class="text-sm font-medium text-primary">Emma</span>
+        </div>
 
         <p class="mb-3 text-xs text-text-muted">Idioma: Português (Brasil) — fixo por enquanto.</p>
 
@@ -168,7 +138,7 @@ onUnmounted(() => {
         />
 
         <p class="mt-4 rounded-lg bg-surface-alt px-3 py-2 text-xs text-text-muted">
-          Integração com Kokoro em breve.
+          Voz gerada por Fish Audio. Sem internet, os comentários da Emma ficam em silêncio — a sessão continua normalmente.
         </p>
       </template>
     </AppCard>

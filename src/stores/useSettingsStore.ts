@@ -7,7 +7,6 @@ export interface AppSettings {
   walkMaxSpeedKmh: number
   runMinSpeedKmh: number
   assistantEnabled: boolean
-  assistantVoice: string | null
   checkpointsByKmEnabled: boolean
   checkpointsByTimeEnabled: boolean
   checkpointsByTimeIntervalMin: number
@@ -17,10 +16,9 @@ const defaults: AppSettings = {
   walkMaxSpeedKmh: 6,
   runMinSpeedKmh: 7,
   assistantEnabled: false,
-  assistantVoice: null,
   checkpointsByKmEnabled: true,
   checkpointsByTimeEnabled: false,
-  checkpointsByTimeIntervalMin: 5,
+  checkpointsByTimeIntervalMin: 30,
 }
 
 function readStoredSettings(): AppSettings {
