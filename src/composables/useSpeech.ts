@@ -60,9 +60,24 @@ function ensureAudioContext(): AudioContext | null {
 }
 
 async function synthesizeAndPlay(text: string, options: SpeechOptions): Promise<void> {
+  // Precisa ser a primeira coisa a rodar aqui, ainda antes de qualquer
+  // await: é o que garante que a criação/resume do AudioContext acontece
+  // dentro da mesma pilha síncrona do gesto do usuário (clique em
+  // "Iniciar"). Se isso só rodar depois do fetch, o Android WebView marca
+  // o contexto como suspenso pela política de autoplay — o áudio chega a
+  // ser baixado e decodificado, mas nenhum som sai, sem erro nenhum.
+  const audioContext = ensureAudioContext()
+  if (!audioContext) {
+    console.warn('[useSpeech] AudioContext indisponível neste ambiente — TTS desativado.')
+    return
+  }
+
   const apiKey = import.meta.env.VITE_FISH_API_KEY
   const voiceId = import.meta.env.VITE_FISH_VOICE_ID
-  if (!apiKey || !voiceId) return // não configurado: silêncio
+  if (!apiKey || !voiceId) {
+    console.warn('[useSpeech] VITE_FISH_API_KEY ou VITE_FISH_VOICE_ID não configurados — TTS desativado.')
+    return
+  }
 
   try {
     const response = await fetch(FISH_TTS_URL, {
@@ -80,10 +95,15 @@ async function synthesizeAndPlay(text: string, options: SpeechOptions): Promise<
       }),
     })
 
-    if (!response.ok) return // falha silenciosa
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      console.error(`[useSpeech] Fish Audio respondeu ${response.status} ${response.statusText}: ${body}`)
+      return
+    }
 
-    const audioContext = ensureAudioContext()
-    if (!audioContext) return
+    if (audioContext.state === 'suspended') {
+      console.warn('[useSpeech] AudioContext ainda suspenso após resume() — o áudio pode não ser audível.')
+    }
 
     const arrayBuffer = await response.arrayBuffer()
     const decoded = await audioContext.decodeAudioData(arrayBuffer)
@@ -97,8 +117,8 @@ async function synthesizeAndPlay(text: string, options: SpeechOptions): Promise<
       source.onended = () => resolve()
       source.start()
     })
-  } catch {
-    // sem internet ou erro de API: silêncio, nunca trava a sessão
+  } catch (error) {
+    console.error('[useSpeech] falha ao sintetizar/tocar áudio:', error)
   } finally {
     currentSource = null
   }
