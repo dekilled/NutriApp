@@ -3,16 +3,21 @@
 // no futuro sem alterar quem consome useSpeech() — só a implementação
 // interna deste módulo muda.
 //
-// Blob URL (URL.createObjectURL) não é reproduzível pelo elemento
-// <audio> dentro do WebView do Capacitor Android, e o próprio <audio>
-// com URI de arquivo também se mostrou pouco confiável ali. Por isso o
-// áudio é salvo como arquivo real no cache do app via
-// @capacitor/filesystem e tocado pelo player nativo do
-// @capacitor-community/native-audio, sendo descarregado e apagado logo
-// em seguida. Não há fila: chamadas concorrentes podem sobrepor áudio
-// (trade-off aceito para simplificar depois de vários problemas de
-// decodificação/autoplay no WebView Android).
+// A ponte nativa do Capacitor só transporta string/JSON entre o Kotlin
+// e o JS — nunca bytes binários crus. Por isso a requisição usa
+// CapacitorHttp.request() com responseType: 'blob': o próprio Android
+// nativo já devolve o áudio em base64 puro. Converter manualmente um
+// ArrayBuffer pra base64 via `btoa(String.fromCharCode(...bytes))`
+// (abordagem anterior) corrompia/truncava arquivos de áudio nesse
+// tamanho — era a causa real dos erros de decodificação (EncodingError,
+// NotSupportedError, "Prepare failed"), não o player escolhido.
+//
+// O base64 recebido vai direto pro Filesystem (cache do app) e é tocado
+// pelo player nativo do @capacitor-community/native-audio, sendo
+// descarregado e apagado logo em seguida. Não há fila: chamadas
+// concorrentes podem sobrepor áudio (trade-off aceito para simplificar).
 
+import { CapacitorHttp } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 import { NativeAudio } from '@capacitor-community/native-audio'
 
@@ -29,23 +34,30 @@ let currentAssetId: string | null = null
 
 async function speak(text: string): Promise<void> {
   try {
-    const response = await fetch('https://api.fish.audio/v1/tts', {
+    const response = await CapacitorHttp.request({
+      url: 'https://api.fish.audio/v1/tts',
       method: 'POST',
       headers: {
         Authorization: `Bearer ${import.meta.env.VITE_FISH_API_KEY}`,
         'Content-Type': 'application/json',
         model: 's2.1-pro-free',
       },
-      body: JSON.stringify({
+      data: {
         text,
         reference_id: import.meta.env.VITE_FISH_VOICE_ID,
         format: 'mp3',
-      }),
+      },
+      responseType: 'blob',
     })
 
-    // Converter para base64
-    const arrayBuffer = await response.arrayBuffer()
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+    if (response.status < 200 || response.status >= 300) {
+      console.error(`[Emma] Fish Audio respondeu ${response.status}:`, response.data)
+      return
+    }
+
+    // Já vem em base64 puro (sem prefixo data:...) — a ponte nativa do
+    // Capacitor converte o blob internamente antes de entregar pro JS.
+    const base64 = response.data as string
 
     // Salvar arquivo temporário
     const fileName = `emma_${Date.now()}.mp3`
