@@ -4,14 +4,17 @@
 // interna deste módulo muda.
 //
 // Blob URL (URL.createObjectURL) não é reproduzível pelo elemento
-// <audio> dentro do WebView do Capacitor Android. Por isso o áudio é
-// salvo como arquivo real no cache do app via @capacitor/filesystem e
-// tocado a partir da URI nativa (file://...), sendo apagado logo em
-// seguida. Não há fila: chamadas concorrentes podem sobrepor áudio
+// <audio> dentro do WebView do Capacitor Android, e o próprio <audio>
+// com URI de arquivo também se mostrou pouco confiável ali. Por isso o
+// áudio é salvo como arquivo real no cache do app via
+// @capacitor/filesystem e tocado pelo player nativo do
+// @capacitor-community/native-audio, sendo descarregado e apagado logo
+// em seguida. Não há fila: chamadas concorrentes podem sobrepor áudio
 // (trade-off aceito para simplificar depois de vários problemas de
 // decodificação/autoplay no WebView Android).
 
 import { Directory, Filesystem } from '@capacitor/filesystem'
+import { NativeAudio } from '@capacitor-community/native-audio'
 
 export interface UseSpeech {
   speak(text: string): Promise<void>
@@ -20,7 +23,9 @@ export interface UseSpeech {
   isSupported: boolean
 }
 
-let currentAudioEl: HTMLAudioElement | null = null
+const AUDIO_POLL_INTERVAL_MS = 200
+
+let currentAssetId: string | null = null
 
 async function speak(text: string): Promise<void> {
   try {
@@ -50,12 +55,28 @@ async function speak(text: string): Promise<void> {
       directory: Directory.Cache,
     })
 
-    // Tocar via Audio com URI nativo
-    const audio = new Audio(result.uri)
-    currentAudioEl = audio
-    await audio.play()
-    await new Promise<void>((resolve) => {
-      audio.onended = () => resolve()
+    // Tocar via player nativo
+    const audioId = `emma_${Date.now()}`
+    currentAssetId = audioId
+
+    await NativeAudio.preload({
+      assetId: audioId,
+      assetPath: result.uri,
+      audioChannelNum: 1,
+      isUrl: true,
+    })
+
+    await NativeAudio.play({ assetId: audioId })
+
+    await new Promise((resolve) => {
+      const interval = setInterval(async () => {
+        const status = await NativeAudio.isPlaying({ assetId: audioId })
+        if (!status.isPlaying) {
+          clearInterval(interval)
+          await NativeAudio.unload({ assetId: audioId })
+          resolve(null)
+        }
+      }, AUDIO_POLL_INTERVAL_MS)
     })
 
     // Limpar arquivo
@@ -66,14 +87,16 @@ async function speak(text: string): Promise<void> {
   } catch (e) {
     console.error('[Emma] erro:', e)
   } finally {
-    currentAudioEl = null
+    currentAssetId = null
   }
 }
 
 function stop(): void {
-  if (currentAudioEl) {
-    currentAudioEl.pause()
-    currentAudioEl = null
+  if (currentAssetId) {
+    const assetId = currentAssetId
+    currentAssetId = null
+    void NativeAudio.stop({ assetId })
+    void NativeAudio.unload({ assetId })
   }
 }
 
