@@ -3,11 +3,15 @@
 // no futuro sem alterar quem consome useSpeech() — só a implementação
 // interna deste módulo muda.
 //
-// speak() usa exatamente a abordagem do playground da Fish Audio: sem
-// AudioContext, sem decodeAudioData — toca direto via elemento <audio>
-// a partir de um Blob URL. Não há fila: chamadas concorrentes podem
-// sobrepor áudio (trade-off aceito para simplificar depois de vários
-// problemas de decodificação/autoplay no WebView Android).
+// Blob URL (URL.createObjectURL) não é reproduzível pelo elemento
+// <audio> dentro do WebView do Capacitor Android. Por isso o áudio é
+// salvo como arquivo real no cache do app via @capacitor/filesystem e
+// tocado a partir da URI nativa (file://...), sendo apagado logo em
+// seguida. Não há fila: chamadas concorrentes podem sobrepor áudio
+// (trade-off aceito para simplificar depois de vários problemas de
+// decodificação/autoplay no WebView Android).
+
+import { Directory, Filesystem } from '@capacitor/filesystem'
 
 export interface UseSpeech {
   speak(text: string): Promise<void>
@@ -28,21 +32,41 @@ async function speak(text: string): Promise<void> {
         model: 's2.1-pro-free',
       },
       body: JSON.stringify({
-        text: text,
+        text,
         reference_id: import.meta.env.VITE_FISH_VOICE_ID,
         format: 'mp3',
       }),
     })
 
+    // Converter para base64
     const arrayBuffer = await response.arrayBuffer()
-    const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' })
-    const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+
+    // Salvar arquivo temporário
+    const fileName = `emma_${Date.now()}.mp3`
+    const result = await Filesystem.writeFile({
+      path: fileName,
+      data: base64,
+      directory: Directory.Cache,
+    })
+
+    // Tocar via Audio com URI nativo
+    const audio = new Audio(result.uri)
     currentAudioEl = audio
-    audio.play()
-    audio.onended = () => URL.revokeObjectURL(url)
+    await audio.play()
+    await new Promise<void>((resolve) => {
+      audio.onended = () => resolve()
+    })
+
+    // Limpar arquivo
+    await Filesystem.deleteFile({
+      path: fileName,
+      directory: Directory.Cache,
+    })
   } catch (e) {
     console.error('[Emma] erro:', e)
+  } finally {
+    currentAudioEl = null
   }
 }
 
