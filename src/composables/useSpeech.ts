@@ -85,12 +85,12 @@ async function synthesizeAndPlay(text: string, options: SpeechOptions): Promise<
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        model: 's2.1-pro-free',
       },
       body: JSON.stringify({
         text,
         reference_id: voiceId,
         format: 'mp3',
-        model: 's2.1-pro-free',
         language: options.lang ?? DEFAULT_LANG,
       }),
     })
