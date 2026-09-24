@@ -24,6 +24,8 @@ export interface UseSpeech {
 
 const FISH_TTS_URL = 'https://api.fish.audio/v1/tts'
 const DEFAULT_LANG = 'pt-BR'
+const AUDIO_FORMAT = 'wav'
+const AUDIO_MIME = 'audio/wav'
 
 interface QueueItem {
   text: string
@@ -33,6 +35,7 @@ interface QueueItem {
 
 let sharedAudioContext: AudioContext | null = null
 let currentSource: AudioBufferSourceNode | null = null
+let currentAudioEl: HTMLAudioElement | null = null
 const queue: QueueItem[] = []
 let processing = false
 
@@ -57,6 +60,23 @@ function ensureAudioContext(): AudioContext | null {
     void sharedAudioContext.resume()
   }
   return sharedAudioContext
+}
+
+/** Fallback quando decodeAudioData falha: toca via <audio> a partir de um Blob URL. */
+async function playViaAudioElement(arrayBuffer: ArrayBuffer): Promise<void> {
+  const blob = new Blob([arrayBuffer], { type: AUDIO_MIME })
+  const url = URL.createObjectURL(blob)
+  const audio = new Audio(url)
+  currentAudioEl = audio
+  try {
+    await audio.play()
+    await new Promise<void>((resolve) => {
+      audio.onended = () => resolve()
+    })
+  } finally {
+    URL.revokeObjectURL(url)
+    currentAudioEl = null
+  }
 }
 
 async function synthesizeAndPlay(text: string, options: SpeechOptions): Promise<void> {
@@ -90,7 +110,7 @@ async function synthesizeAndPlay(text: string, options: SpeechOptions): Promise<
       body: JSON.stringify({
         text,
         reference_id: voiceId,
-        format: 'mp3',
+        format: AUDIO_FORMAT,
         language: options.lang ?? DEFAULT_LANG,
       }),
     })
@@ -106,17 +126,29 @@ async function synthesizeAndPlay(text: string, options: SpeechOptions): Promise<
     }
 
     const arrayBuffer = await response.arrayBuffer()
-    const decoded = await audioContext.decodeAudioData(arrayBuffer)
 
-    const source = audioContext.createBufferSource()
-    source.buffer = decoded
-    source.connect(audioContext.destination)
-    currentSource = source
+    try {
+      // decodeAudioData pode "esvaziar" o ArrayBuffer original em alguns
+      // engines — passa uma cópia pra manter o original intacto pro
+      // fallback abaixo, caso a decodificação falhe.
+      const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0))
 
-    await new Promise<void>((resolve) => {
-      source.onended = () => resolve()
-      source.start()
-    })
+      const source = audioContext.createBufferSource()
+      source.buffer = decoded
+      source.connect(audioContext.destination)
+      currentSource = source
+
+      await new Promise<void>((resolve) => {
+        source.onended = () => resolve()
+        source.start()
+      })
+    } catch (decodeError) {
+      console.warn(
+        '[useSpeech] decodeAudioData falhou, tentando fallback via elemento <audio>:',
+        decodeError,
+      )
+      await playViaAudioElement(arrayBuffer)
+    }
   } catch (error) {
     console.error('[useSpeech] falha ao sintetizar/tocar áudio:', error)
   } finally {
@@ -151,6 +183,10 @@ function stop(): void {
       // já parado/terminado — ignora
     }
     currentSource = null
+  }
+  if (currentAudioEl) {
+    currentAudioEl.pause()
+    currentAudioEl = null
   }
 }
 
