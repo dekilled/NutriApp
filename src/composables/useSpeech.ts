@@ -90,7 +90,7 @@ async function synthesizeAndPlay(text: string, options: SpeechOptions): Promise<
         text,
         reference_id: voiceId,
         format: 'mp3',
-        model: 's2-pro',
+        model: 's2.1-pro-free',
         language: options.lang ?? DEFAULT_LANG,
       }),
     })
